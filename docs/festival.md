@@ -27,7 +27,7 @@ The strongest first customer is an organiser with an existing obligation and an 
 | Source and tests | Present. Run the README commands from a clean checkout. |
 | Signature compatibility | Live Diana read at block 10,513,660 on 21 November returned true for valid bytes and false after the message changed. fUSD returned six decimals. Reproduce with node scripts/probe.mjs. |
 | Cover and recording | submission/cover.png and submission/rehearsal.mp4 show the actual local app. The recording uses a genuine one-minute expiry. The faster automated regression moves a disposable fixture to the same boundary. |
-| Public repo and project registration | Source is on [GitHub](https://github.com/darkfallX/Clainova). Festival registration is unconfirmed. |
+| Repository and festival listing | Both the [source repository](https://github.com/darkfallX/Clainova) and the [Clainova festival page](https://build.qorechain.io/p/clainova) are public. |
 | Diana deployment | Key registration, the one-transaction EVM window and contract creation all confirmed. [Deployment receipts](../submission/diana-deployment.json) |
 | SMS and collection | The builder confirmed receipt of a test SMS in the Africa’s Talking simulator. A funded invitation and recipient claim on Diana remain to be demonstrated. |
 | Two-stage QCAI review | Requires dashboard sign-in. Run the auditor on the escrow, save its report with the source revision, address findings, run again and save the second report. [Official auditor](https://docs.qorechain.io/dashboard/contract-auditor/) |
