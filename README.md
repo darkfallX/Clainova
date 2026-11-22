@@ -2,7 +2,9 @@
 
 Clainova lets a community organiser pay a workshop speaker by phone number before the speaker has a wallet. The speaker opens a private invitation, verifies the number, creates an encrypted wallet and collects test fUSD. An expired invitation makes a refund available to the original sender.
 
-**Delivery status, 22 November 2026.** ClainovaClaims is deployed on Diana at `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`. The deployed contract returned the expected festival fUSD address and ML-DSA-87 verifier key. The recording shows the local rehearsal. Carrier SMS, a live recipient claim and the two official audit reports are pending. [Deployment receipts](submission/diana-deployment.json)
+**Delivery status, 23 November 2026.** ClainovaClaims is deployed on Diana at `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`. The deployed contract returned the expected festival fUSD address and ML-DSA-87 verifier key. [Deployment receipts](submission/diana-deployment.json)
+
+Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. A funded invitation and claim on Diana, carrier delivery to a handset, and the two QCAI reports are still pending.
 
 [Watch the rehearsal](submission/rehearsal.mp4) · [Cover](submission/cover.png) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
