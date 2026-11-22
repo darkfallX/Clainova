@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#f6f2e7" />
+    <meta
+      name="description"
+      content="Send a test payment to a phone number. Recipients verify their number and collect into their own QoreChain wallet."
+    />
+    <title>Clainova · Payment counter</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header>
+      <div class="bar">
+        <a class="brand" href="/" aria-label="Clainova home"
+          ><span class="mark" aria-hidden="true">C</span>Clainova</a
+        >
+        <nav aria-label="Main">
+          <a href="/" id="sendNav">Payment counter</a
+          ><a href="/ledger" id="ledgerNav">Ledger</a>
+        </nav>
+        <span class="network" id="network">Connecting…</span>
+      </div>
+    </header>
+    <main id="main" tabindex="-1"><h1>Opening the counter…</h1></main>
+    <footer>
+      <span class="word">Clainova</span><span>Phone-to-wallet payments</span>
+      <div><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
+    </footer>
+    <dialog id="review" aria-labelledby="dialogTitle">
+      <form method="dialog">
+        <button class="close" aria-label="Close dialog">×</button>
+      </form>
+      <div id="dialogBody"></div>
+    </dialog>
+    <div id="feedback" role="status" aria-live="polite"></div>
+    <noscript>Enable JavaScript to create or collect an invitation.</noscript>
+  </body>
+</html>
