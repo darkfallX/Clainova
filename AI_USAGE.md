@@ -6,6 +6,8 @@ OpenAI Codex researched the event and its public projects, checked wallet and cr
 
 Three decisions changed the implementation. The public gallery count was rechecked. The verifier's invitation secret was separated from the public escrow identifier. The browser-created wallet uses QoreSign to open a target-limited window because several documented QoreX interfaces restrict page-initiated window requests. The browser suite exercises the encrypted backup and the contract suite covers destination and domain binding.
 
-Validation evidence is recorded in the README and festival assessment. The project has no claimed human security review, independent QCAI audit, public deployment, carrier SMS delivery or real-recipient trial. The participant can add their own contributions and evidence when those actions occur.
+The builder funded the dedicated Diana deployment account. Codex used it to register the post-quantum key, open a one-transaction window and deploy the escrow, then checked the token address and verifier key on chain. [Deployment receipts](submission/diana-deployment.json)
+
+The builder set up the Africa’s Talking sandbox and simulator number. Codex sent a test message through the sandbox API and the builder confirmed it appeared in the simulator inbox. Human security review, two-stage QCAI auditing, handset delivery and a live recipient claim are still pending.
 
 The GitHub import groups the completed local build (5eb6f52) into commits by feature. Their dates reflect publication.
