@@ -2,7 +2,7 @@
 
 Clainova lets a community organiser pay a workshop speaker by phone number before the speaker has a wallet. The speaker opens a private invitation, verifies the number, creates an encrypted wallet and collects test fUSD. An expired invitation makes a refund available to the original sender.
 
-**Delivery status, 21 November 2026.** The local rehearsal runs end to end. Diana independently verified a Clainova ML-DSA-87 signature in a read-only call. A funded Diana deployment, carrier SMS, the two official audit reports and real-recipient trials remain outstanding. The recording shows the local rehearsal.
+**Delivery status, 22 November 2026.** ClainovaClaims is deployed on Diana at `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`. The deployed contract returned the expected festival fUSD address and ML-DSA-87 verifier key. The recording shows the local rehearsal. Carrier SMS, a live recipient claim and the two official audit reports are pending. [Deployment receipts](submission/diana-deployment.json)
 
 [Watch the rehearsal](submission/rehearsal.mp4) · [Cover](submission/cover.png) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
@@ -55,6 +55,8 @@ The contract binds the attestation to its purpose, chain, contract, payment ID, 
 The browser-created account avoids a second wallet installation. Its QoreSign derivation follows the address-bound, mnemonic-based coin-60 convention. Only locally generated Clainova wallets and their encrypted backups use the built-in signing path. Clainova never asks for an existing wallet's seed phrase. Restore in Clainova with the downloaded backup. Recovery in the QoreX application itself remains untested. [Key binding](https://docs.qorechain.io/build-before-qday/key-binding/) · [Hybrid signing](https://docs.qorechain.io/qoresign/spec/hybrid-signing-v1/)
 
 ## Testnet deployment handoff
+
+The current deployment already has its address and matching verifier seed in the operator's local configuration. Preserve the seed when moving the service to a host. Steps 2 and 3 below describe setup for a fresh deployment.
 
 1. Use a single Node process behind an HTTPS reverse proxy and attach a persistent volume. Build once with `npm ci && npm run build`. Restrict the data directory and secret configuration to the service account. Disable URL logging for private invitation paths. Back up the database and encryption key together. Do not run multiple replicas against the same sponsor account.
 2. Copy `.env.example` to `.env`. Generate independent 32-byte hexadecimal values for `DATA_KEY` and `VERIFIER_SEED` with a cryptographic secret generator. Set `OPERATOR_PASSWORD` to a distinct secret of at least 16 characters. Keep the resulting file private.

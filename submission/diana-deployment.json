@@ -1,0 +1,28 @@
+{
+  "network": "qorechain-diana",
+  "chainId": 9800,
+  "contract": "ClainovaClaims",
+  "address": "0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822",
+  "deployer": "0x2F3AF6B4BAccf904Ea23F2600f8f1E10b221F6Ec",
+  "token": "0x97143B771D34ddb9130b807b135Ae675A5a963CA",
+  "verifierKeyKeccak256": "0xa51ec3ee5d81484c7840618d2057a5cfd9b2bb4a6ac47e759bbedfafb83168c2",
+  "runtimeCodeKeccak256": "0x73ecf40998f6daf2a0bd79272d2125f98aef486320238c8045c20921b177f64c",
+  "registration": {
+    "hash": "B2103B2D47958C836BDDF07BDADAB8BDDEC127B2159CB377BAFFD672338BF560",
+    "height": 10577408,
+    "gasUsed": "299321"
+  },
+  "window": {
+    "hash": "2FBBC6C442242408A9D6703D58A61084660E6C52C0992DF002D3F59DF5EC1C14",
+    "height": 10577412,
+    "gasUsed": "187257"
+  },
+  "deployment": {
+    "hash": "0x5bf50773fc12c83cbf977d49b581e2fdb420eaebb3cf139b01b90970d06f93df",
+    "block": 10577417,
+    "blockHash": "0xace4d8f28703b30ffbfc07563cb7af11e3cd529061c06afb4f73dd41720c1fd5",
+    "timestamp": "2026-11-22T21:52:25.000Z",
+    "gasUsed": "2849387",
+    "feeTestQor": "0.3205560375"
+  }
+}
