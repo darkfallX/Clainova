@@ -6,6 +6,12 @@ A community organiser owes a speaker for a workshop. The organiser knows their p
 
 We considered a wallet dashboard, a marketing landing page and a payment counter. The counter puts the form and its live payment slip side by side. The slip follows the recipient through verification and collection. Warm paper (#f6f2e7), aubergine ink (#29212e), orange-red postage (#bc4527), and dark green confirmations (#285244) reference printed money orders. Use local Outfit, tabular digits, 4–24 px spacing, thin rules, square receipts and modest control radii. Maximum page width 1160 px. The paper folds beneath the form on phones. When a payment changes state the status stamp settles over 220 ms. Under reduced motion it appears immediately. The reference for the input, review and confirmation sequence is Coinbase's [send flow](https://help.coinbase.com/en-gb/wallet/sending-and-receiving/how-do-i-send-and-receive-crypto-through-wallet).
 
+## Selected direction · Pocket Fold, 23 November 2026
+
+The builder selected [concept 08](visual-concepts/08-pocket-fold.png). The organiser sees a closed ultramarine envelope beside the recipient form. Entering a valid recipient opens a white slip in a blue pocket. On the private invitation the amount, optional note, masked number and deadline sit above the verification step on phones.
+
+Use pearl paper (#f6f5f1), ultramarine (#2939ae), tangerine (#ff824b), dark text on the primary action and the bundled Outfit typeface. The slip rises 10 px over 220 ms when revealed. Reduced-motion mode shows the finished position immediately. The previous printed-slip direction above records the earlier design.
+
 ## Architecture review
 
 Use one Node 22 service, SQLite for durable invitations and throttles, a bundled browser client and one immutable Solidity escrow for the six-decimal festival token. A phone record stays off-chain. A private random link is distinct from the public on-chain ID. A server-generated ML-DSA-87 attestation authorises one destination. Recipient submits directly. The escrow independently checks proof of possession and signs over the full settlement domain. An organiser can recover expired deposits. A failed SMS must preserve the funded claim and permit redelivery.
