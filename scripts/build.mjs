@@ -10,7 +10,7 @@ fs.writeFileSync(
     bytecode: "0x" + escrow.evm.bytecode.object,
   }),
 );
-for (const file of ["index.html", "styles.css"])
+for (const file of ["index.html", "styles.css", "pocket-fold.webp"])
   fs.copyFileSync("web/" + file, "dist/" + file);
 fs.copyFileSync(
   "node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2",
