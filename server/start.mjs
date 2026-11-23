@@ -51,6 +51,7 @@ const app = service({
   },
 });
 const staticFiles = {
+  "/pocket-fold.webp": ["pocket-fold.webp", "image/webp"],
   "/styles.css": ["styles.css", "text/css"],
   "/app.js": ["app.js", "application/javascript"],
   "/outfit.woff2": ["outfit.woff2", "font/woff2"],
