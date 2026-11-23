@@ -247,7 +247,17 @@ export function service({ store, authority, live, config, clock = now }) {
       let row = await sync(fromLink(link));
       if (!row.opened && row.state === "funded")
         row = store.patch(row.id, { opened: clock() });
-      return view(row);
+      const time = clock();
+      return {
+        ...view(row),
+        verification: {
+          requested: Boolean(row.nextCode),
+          validFor: row.pin && row.attempts < 5
+            ? Math.max(0, Math.min(row.pinUntil, row.expiry) - time)
+            : 0,
+          retryIn: Math.max(0, (row.nextCode || 0) - time),
+        },
+      };
     },
     async code(link) {
       const row = await sync(fromLink(link));
