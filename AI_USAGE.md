@@ -11,3 +11,5 @@ The builder funded the dedicated Diana deployment account. Codex used it to regi
 The builder set up the Africa’s Talking sandbox and simulator number. Codex sent a test message through the sandbox API and the builder confirmed it appeared in the simulator inbox. Human security review, two-stage QCAI auditing, handset delivery and a live recipient claim are still pending.
 
 The GitHub import groups the completed local build (5eb6f52) into commits by feature. Their dates reflect publication.
+
+The builder chose Pocket Fold from ten original UI concepts. Codex used the built-in ImageGen tool to extract a standalone ultramarine paper envelope with an orange folded corner from the selected concept, then packaged a WebP version for the counter. Receipt text, status and form controls are rendered by the application. [Concepts and prompts](docs/visual-concepts/README.md)
