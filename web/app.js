@@ -106,7 +106,7 @@ async function signIn(next) {
   main(
     title(
       "Organiser sign-in",
-      "Enter the organiser password to use this payment counter.",
+      "Sign in to pay someone by phone number. If you received an invitation, open the link in your message.",
     ) +
       '<form id="login" class="formstack copy"><div class="field"><label for="pass">Organiser password</label><input id="pass" type="password" required autocomplete="current-password"></div><button class="primary">Sign in</button></form>',
   );
@@ -119,59 +119,110 @@ async function signIn(next) {
 async function counter() {
   if (!cfg.session) return signIn(counter);
   const info = await api("/api/payments");
-  const form =
-    '<form id="payment"><div class="field"><label for="phone">Recipient phone number</label><div class="group"><select id="dial" aria-label="Country calling code"><option value="+234">NG +234</option><option value="+254">KE +254</option><option value="+233">GH +233</option><option value="+27">ZA +27</option></select><input type="tel" required id="phone" autocomplete="tel-national" placeholder="801 234 5678"></div></div><div class="pair"><div class="field"><label for="amount">Amount</label><div class="group"><input required id="amount" inputmode="decimal" value="20" maxlength="12"><span class="unit">test fUSD</span></div></div><div class="field"><label for="period">Collection period</label><select id="period"><option value="604800">7 days</option><option value="86400">24 hours</option>' +
-    (local ? '<option value="60">1 minute · rehearsal</option>' : "") +
-    '</select></div></div><div class="field"><label for="note">Payment note <span class="optional">(optional)</span></label><input id="note" maxlength="80" placeholder="Workshop speaker fee"></div><button class="primary wide">Review payment <span class="arrow" aria-hidden="true">→</span></button></form>';
-  main(
-    title(
-      "Send a payment.",
-      "Pay someone by phone number. They can set up their wallet when they collect.",
-    ) +
-      layout(
-        form +
-          '<p class="formnote">' +
-          (local
-            ? "Practice with a local inbox and test tokens."
-            : "Your recipient receives an SMS after the deposit confirms.") +
-          " Unclaimed funds can be refunded after the deadline.</p>",
-        receipt(),
-      ) +
-      '<div class="strip"><span>' +
-      (local
-        ? "Rehearsal balance · " + money(info.balance) + " test fUSD"
-        : "QoreChain Diana · ERC-20 test fUSD") +
-      '</span><a href="/ledger">View ledger</a></div>',
-  );
-  const values = () => {
-    const digits = el("#phone")
-      .value.replace(/[ ()-]/g, "")
-      .replace(/^0/, "");
-    return {
-      phone: el("#dial").value + digits,
-      amount: el("#amount").value.trim(),
-      note: el("#note").value,
-      seconds: Number(el("#period").value),
-    };
-  };
+  const instructions = local
+    ? "Enter their mobile number. You can try the invitation in the rehearsal inbox."
+    : "Enter their mobile number. They’ll get an invitation by SMS after you fund the payment.";
+  const steps = `
+    <ol class="counter-progress" aria-label="Payment steps">
+      <li id="recipientStep" aria-current="step">Recipient</li><li id="amountStep">Amount</li><li>Review</li>
+    </ol>
+    <section id="recipientPanel">
+      ${title("Who are you paying?", instructions)}
+      <form id="recipientForm" novalidate>
+        <div class="field"><label for="phone">Recipient phone number</label>
+          <div class="group"><select id="dial" aria-label="Country calling code">
+            <option value="+234">NG +234</option><option value="+254">KE +254</option><option value="+233">GH +233</option><option value="+27">ZA +27</option>
+          </select><input type="tel" required id="phone" autocomplete="tel" placeholder="801 234 5678" aria-describedby="phoneError"></div>
+          <span class="field-error" id="phoneError" aria-live="polite"></span>
+        </div>
+        <button class="primary wide">Continue <span class="arrow" aria-hidden="true">→</span></button>
+      </form>
+      <p class="formnote">Your recipient can create a wallet when they collect.</p>
+    </section>
+    <section id="amountPanel" hidden>
+      <div class="intro"><h1>How much?</h1></div>
+      <div class="recipient-line"><span>Paying <strong id="confirmedPhone"></strong></span>
+        <button type="button" class="edit-recipient" id="editRecipient">Edit number</button></div>
+      <form id="payment">
+        <div class="field"><label for="amount">Amount</label><div class="group">
+          <input required id="amount" inputmode="decimal" maxlength="12" placeholder="0.00"><span class="unit">test fUSD</span>
+        </div></div>
+        <details class="payment-options"><summary>Payment details <span id="periodSummary">7 days to collect</span></summary>
+          <div class="field"><label for="period">Collection period</label><select id="period"><option value="604800">7 days</option><option value="86400">24 hours</option>
+            ${local ? '<option value="60">1 minute · rehearsal</option>' : ""}
+          </select></div>
+          <div class="field"><label for="note">Payment note <span class="optional">(optional)</span></label><input id="note" maxlength="80" placeholder="Workshop speaker fee"></div>
+        </details>
+        <button class="primary wide">Review payment <span class="arrow" aria-hidden="true">→</span></button>
+      </form>
+      <p class="formnote">Unclaimed funds can be refunded after the deadline.</p>
+    </section>`;
+  main(`<div class="counter-home">
+    <div class="counter-scene">
+      <div id="closedPocket" class="closed-pocket">
+        <p class="scene-title">Pay by phone<span>.</span></p>
+        <img src="/pocket-fold.webp" alt="" width="1152" height="768" fetchpriority="high">
+      </div>
+      <div id="openPocket" hidden>${receipt()}</div>
+    </div>
+    <section class="formside counter-sheet">${steps}</section>
+  </div>
+  <div class="strip"><span>${local ? "Rehearsal balance · " + money(info.balance) + " test fUSD" : "QoreChain Diana · ERC-20 test fUSD"}</span><a href="/ledger">View ledger <span aria-hidden="true">↗</span></a></div>`);
+
+  let recipient = "";
+  const phone = el("#phone");
+  const dial = el("#dial");
+  const amount = el("#amount");
+  const period = el("#period");
+  function showAmount(show) {
+    el("#closedPocket").hidden = show;
+    el("#openPocket").hidden = !show;
+    el("#recipientPanel").hidden = show;
+    el("#amountPanel").hidden = !show;
+    el(show ? "#recipientStep" : "#amountStep").removeAttribute("aria-current");
+    el(show ? "#amountStep" : "#recipientStep").setAttribute("aria-current", "step");
+    (show ? amount : phone).focus();
+  }
+  function clearPhoneError() {
+    phone.removeAttribute("aria-invalid");
+    el("#phoneError").textContent = "";
+  }
+  phone.oninput = clearPhoneError;
+  dial.onchange = clearPhoneError;
+  on("#recipientForm", "submit", () => {
+    const entered = phone.value.replace(/[\s()-]/g, "");
+    const full = entered.startsWith("+") ? entered : dial.value + entered.replace(/^0/, "");
+    let error = "";
+    if (!entered) error = "Enter the recipient’s mobile number.";
+    else if (!full.startsWith(dial.value)) error = "Choose the country that matches this number.";
+    else if (!/^(?:\+234[1-9]\d{9}|\+(?:254|233|27)[1-9]\d{8})$/.test(full))
+      error = "Check the number of digits for the selected country.";
+    if (error) {
+      phone.setAttribute("aria-invalid", "true");
+      el("#phoneError").textContent = error;
+      phone.focus();
+      return;
+    }
+    clearPhoneError();
+    recipient = full;
+    el("#confirmedPhone").textContent = recipient;
+    el("#slipPhone").textContent = recipient;
+    showAmount(true);
+  });
+  click("#editRecipient", () => showAmount(false));
   el("#payment").oninput = () => {
-    const v = values();
-    el("#slipAmount").textContent = /^\d+(\.\d*)?$/.test(v.amount)
-      ? v.amount
-      : "—";
-    el("#slipPhone").textContent = el("#phone").value
-      ? v.phone
-      : "Phone number";
-    el("#slipExpiry").textContent = date(Date.now() / 1000 + v.seconds);
+    el("#slipAmount").textContent = /^\d+(\.\d*)?$/.test(amount.value) ? amount.value : "—";
+    const duration = period.selectedOptions[0].text.split(" · ")[0];
+    el("#periodSummary").textContent = duration + " to collect";
+    el("#slipExpiry").textContent = "Within " + duration;
   };
   on("#payment", "submit", async () => {
-    const b = values();
-    if (
-      !/^(?:\+234[1-9]\d{9}|\+(?:254|233)[1-9]\d{8}|\+27[1-9]\d{8})$/.test(
-        b.phone,
-      )
-    )
-      throw Error("Check the country and full mobile number.");
+    const b = {
+      phone: recipient,
+      amount: amount.value.trim(),
+      note: el("#note").value,
+      seconds: Number(period.value),
+    };
     if (
       !/^\d{1,5}(\.\d{1,6})?$/.test(b.amount) ||
       Number(b.amount) <= 0 ||
@@ -388,11 +439,59 @@ async function ledger() {
   );
 }
 const grantKey = "clainova.grant." + link;
-let otpSent = false,
-  demoPin = "",
-  verifiedToken = sessionStorage.getItem(grantKey);
+let demoPin = "";
+let verificationTimer;
+let verifiedToken = sessionStorage.getItem(grantKey);
+
+function verificationStep({ requested, validFor }) {
+  const hint = validFor
+    ? "Enter the six-digit code from your latest message."
+    : requested
+      ? "Request a new code to continue."
+      : "Request a six-digit code for the number on the invitation.";
+  let contents =
+    '<div class="step"><h3>Verify your phone number</h3><p class="helper" id="codeHint">' +
+    hint + "</p>";
+  if (validFor) {
+    contents += '<div id="codeEntry">';
+    if (local && demoPin)
+      contents += '<p class="notice">Rehearsal inbox · code <strong id="demoPin">' +
+        esc(demoPin) + "</strong></p>";
+    contents += '<form id="verify"><div class="field"><label for="pin">Verification code</label>' +
+      '<input id="pin" aria-describedby="codeHint" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></div>' +
+      '<button class="primary">Verify code</button></form></div>';
+  }
+  return contents + '<div class="actions">' +
+    action("getCode", requested ? "Request another code" : "Get verification code", !validFor) +
+    "</div></div>";
+}
+
+function startVerificationTimer({ validFor, retryIn }) {
+  const button = el("#getCode");
+  const label = button.textContent;
+  const started = Date.now();
+  function update() {
+    const elapsed = Math.floor((Date.now() - started) / 1000);
+    const wait = Math.max(0, retryIn - elapsed);
+    button.disabled = wait > 0 || Boolean(button.dataset.busy);
+    button.textContent = wait ? "Resend in " + wait + "s" : label;
+    const entry = el("#codeEntry");
+    if (entry && elapsed >= validFor) {
+      const moveFocus = entry.contains(document.activeElement);
+      entry.remove();
+      demoPin = "";
+      el("#codeHint").textContent = "Your code expired. Request a new one to continue.";
+      if (moveFocus) button.focus();
+    }
+    if (wait || elapsed < validFor)
+      verificationTimer = setTimeout(update, 1000);
+  }
+  update();
+}
+
 async function collect() {
   const r = await invite("");
+  clearTimeout(verificationTimer);
   const label = state(r);
   if (r.state === "collected") {
     main(
@@ -462,28 +561,9 @@ async function collect() {
   }
   const token = verifiedToken;
   let contents =
-    '<h2>Collect your payment</h2><p class="helper">' +
-    esc(r.note || "Phone payment") +
-    " · " +
-    esc(r.mask) +
-    "</p>";
+    '<h1>A payment for you.</h1><p class="helper claim-intro">Verify your number and collect into your own wallet.</p>';
   if (!token) {
-    contents +=
-      '<div class="step"><h3>Verify your phone number</h3><p class="helper">Request a six-digit code for the number on the invitation.</p>' +
-      action(
-        "getCode",
-        otpSent ? "Request another code" : "Get verification code",
-        !otpSent,
-      );
-    if (otpSent)
-      contents +=
-        (local
-          ? '<p class="notice">Rehearsal inbox · code <strong id="demoPin">' +
-            esc(demoPin) +
-            "</strong></p>"
-          : "") +
-        '<form id="verify"><div class="field"><label for="pin">Verification code</label><input id="pin" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></div><button class="primary">Verify code</button></form>';
-    contents += "</div>";
+    contents += verificationStep(r.verification);
   } else {
     contents +=
       '<div class="step"><span class="status">Number verified</span>' +
@@ -507,30 +587,35 @@ async function collect() {
       action("again", "Verify number again") +
       "</div></div>";
   }
-  main(
-    title(
-      "A payment for you.",
-      "Verify your number and collect into a wallet you control.",
-    ) + layout(contents, receipt(r)),
-  );
+  main(`<div class="claim-layout">${receipt(r)}<section class="formside claim-sheet">${contents}</section></div>`);
+  if (!token) {
+    startVerificationTimer(r.verification);
+    el("#pin")?.focus({ preventScroll: true });
+  }
   click("#getCode", async () => {
-    const response = await invite("code", {});
-    otpSent = true;
-    demoPin = response.localCode;
-    await collect();
-    el("#pin").focus();
+    demoPin = "";
+    try {
+      const response = await invite("code", {});
+      demoPin = response.localCode;
+    } finally {
+      await collect();
+    }
   });
   on("#verify", "submit", async () => {
-    const { token } = await invite("verify", { code: el("#pin").value });
-    verifiedToken = token;
-    sessionStorage.setItem(grantKey, token);
-    await collect();
+    try {
+      const { token } = await invite("verify", { code: el("#pin").value });
+      verifiedToken = token;
+      sessionStorage.setItem(grantKey, token);
+      demoPin = "";
+    } finally {
+      await collect();
+    }
   });
   bindWallet(collect);
   click("#again", async () => {
     verifiedToken = "";
     sessionStorage.removeItem(grantKey);
-    otpSent = false;
+    demoPin = "";
     await collect();
   });
   click("#sponsor", async () => {
