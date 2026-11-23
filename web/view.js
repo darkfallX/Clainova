@@ -29,43 +29,22 @@ export function state(r) {
       }[r.state] || "Preview";
 }
 export function receipt(r = {}) {
-  const status = state(r);
-  return (
-    '<aside class="press" aria-label="Payment slip"><div class="presshead"><span>Payment slip</span><span>Client copy</span></div><div class="receipt"><div class="receipttop"><strong>Clainova</strong><span class="meta">Transfer order</span></div><div class="amount-line meta">Amount payable</div><div class="total"><span id="slipAmount">' +
-    esc(money(r.amount ?? 20000000)) +
-    '</span> <small>test fUSD</small></div><dl><div><dt>Recipient</dt><dd id="slipPhone">' +
-    esc(r.mask || "Phone number") +
-    '</dd></div><div><dt>Collect by</dt><dd id="slipExpiry">' +
-    esc(r.expiry ? date(r.expiry) : "Within 7 days") +
-    '</dd></div><div><dt>Reference</dt><dd class="code">' +
-    esc(r.id ? r.id.slice(2, 10).toUpperCase() : "Assigned on issue") +
-    '</dd></div></dl><div class="foil"><canvas aria-hidden="true" width="700" height="140"></canvas><span class="stamp ' +
-    (r.id ? "done" : "") +
-    '">' +
-    esc(status) +
-    "</span></div></div></aside>"
-  );
-}
-export function drawSlip() {
-  const canvas = el(".foil canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  ctx.strokeStyle = "#ad6742";
-  ctx.lineWidth = 0.9;
-  for (let strand = 0; strand < 23; strand++) {
-    ctx.beginPath();
-    for (let x = 0; x <= 700; x += 2) {
-      const phase = x / 57 + strand * 0.15;
-      const y =
-        70 + Math.sin(phase) * 44 + Math.sin(x / 93 - strand * 0.18) * 17;
-      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.stroke();
-  }
+  return `<aside class="press" aria-label="Payment slip">
+    <div class="receipt">
+      <div class="receipttop"><strong>Payment slip</strong><span class="slip-status">${esc(state(r))}</span></div>
+      <div class="total"><span id="slipAmount">${r.amount == null ? "—" : esc(money(r.amount))}</span> <small>test fUSD</small></div>
+      ${r.note ? `<p class="slip-note">${esc(r.note)}</p>` : ""}
+      <dl>
+        <div><dt>Recipient</dt><dd id="slipPhone">${esc(r.mask || "Awaiting recipient")}</dd></div>
+        <div><dt>Collect by</dt><dd id="slipExpiry">${esc(r.expiry ? date(r.expiry) : "Within 7 days")}</dd></div>
+        ${r.id ? `<div><dt>Reference</dt><dd class="code">${esc(r.id.slice(2, 10).toUpperCase())}</dd></div>` : ""}
+      </dl>
+    </div>
+    <div class="pocket-front" aria-hidden="true"></div>
+  </aside>`;
 }
 export const main = (html) => {
   el("#main").innerHTML = html;
-  drawSlip();
 };
 let timer;
 export function status(text, timeout = 0) {
