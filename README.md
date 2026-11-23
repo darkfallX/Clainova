@@ -6,7 +6,7 @@ Clainova lets a community organiser pay a workshop speaker by phone number befor
 
 Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. A funded invitation and claim on Diana, carrier delivery to a handset, and the two QCAI reports are still pending.
 
-[Watch the rehearsal](submission/rehearsal.mp4) · [Cover](submission/cover.png) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
+[Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
 ## Run locally
 
@@ -20,7 +20,7 @@ npm start
 
 Open [the payment counter](http://127.0.0.1:4173). Development on Windows can use `npm.cmd` in place of `npm`. The local service binds to loopback. Each organiser browser starts with 1,000 rehearsal test fUSD. Local mode can run offline after installation and build. There is no SMS charge and no on-chain transaction.
 
-1. Enter a sample Nigerian phone number such as **801 234 5678**, 20 test fUSD and a workshop note. Review the phone number and issue the invitation.
+1. Enter a sample Nigerian phone number such as **801 234 5678** and choose **Continue**. Enter **20** test fUSD. Open **Payment details** to add a workshop note or change the collection period. Review the payment and issue the invitation.
 2. Open **Open recipient inbox**, request the code and enter the six digits from the labelled local inbox. An invite can also be opened in another browser profile on the same machine.
 3. Choose a wallet passphrase of at least ten characters. Save the encrypted JSON backup, then approve collection. Use **More wallet options** and select your backup to restore it with the same passphrase.
 4. From the receipt, send 1 test fUSD to a second test wallet address. The recipient balance becomes 19. The ledger records the outgoing payment.
