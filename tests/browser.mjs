@@ -87,6 +87,9 @@ try {
   async function issue(note, quick = false) {
     await page.goto(origin);
     await page.getByLabel("Recipient phone number").fill("801 234 5678");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("Amount", { exact: true }).fill("20");
+    await page.getByText("Payment details", { exact: false }).first().click();
     await page.getByLabel("Payment note").fill(note);
     if (quick) await page.getByLabel("Collection period").selectOption("60");
     await hold();
@@ -101,7 +104,7 @@ try {
   }
   await page.goto(origin);
   await page.getByLabel("Recipient phone number").waitFor();
-  for (const width of [390, 768, 1440]) {
+  for (const width of [375, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert.ok(
       await page.evaluate(
@@ -109,13 +112,42 @@ try {
       ),
       "overflow at " + width,
     );
-    await page.getByRole("button", { name: "Review payment" }).focus();
+    await page.getByRole("button", { name: "Continue" }).focus();
     assert.equal(
       await page.evaluate(() => document.activeElement.tagName),
       "BUTTON",
     );
   }
   await accessibility(page);
+  if (!record) {
+    const phone = page.getByLabel("Recipient phone number");
+    const amount = page.getByLabel("Amount", { exact: true });
+    const next = page.getByRole("button", { name: "Continue" });
+    assert.equal(await amount.isVisible(), false);
+    await next.click();
+    await page.getByText("Enter the recipient’s mobile number.").waitFor();
+    await phone.fill("123");
+    await phone.press("Enter");
+    await page.getByText("Check the number of digits for the selected country.").waitFor();
+    await phone.fill("+234 801 234 5678");
+    await phone.press("Enter");
+    assert.ok(await amount.evaluate((input) => input === document.activeElement));
+    await amount.fill("12.50");
+    await page.locator(".payment-options summary").click();
+    await page.getByLabel("Collection period").selectOption("86400");
+    await page.getByLabel("Payment note").fill("Travel allowance");
+    await page.getByRole("button", { name: "Edit number" }).click();
+    assert.ok(await phone.evaluate((input) => input === document.activeElement));
+    await phone.fill("0801 234 5679");
+    await phone.press("Enter");
+    assert.equal(await amount.inputValue(), "12.50");
+    assert.equal(await page.getByLabel("Payment note").inputValue(), "Travel allowance");
+    assert.equal(await page.locator("#slipExpiry").textContent(), "Within 24 hours");
+    await page.getByRole("button", { name: "Review payment" }).click();
+    await page.getByRole("dialog").getByText("+2348012345679").waitFor();
+    await page.keyboard.press("Escape");
+    await page.goto(origin);
+  }
   await page.locator("#phone").focus();
   await page.locator("#phone").blur();
   // A 16:9 image of the actual working counter.
@@ -127,8 +159,35 @@ try {
   }
   const link = await issue("Workshop speaker fee");
   await page.goto(origin + link);
+  if (!record) {
+    await page.getByRole("button", { name: "Get verification code" }).waitFor();
+    const nav = page.getByRole("navigation", { name: "Main" });
+    for (const width of [375, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.ok(await nav.getByRole("link", { name: "Payment counter" }).isVisible());
+      assert.ok(await nav.getByRole("link", { name: "Ledger" }).isVisible());
+    }
+    await nav.getByRole("link", { name: "Ledger" }).click();
+    await page.getByRole("heading", { name: "Payment ledger." }).waitFor();
+    await page.goBack();
+  }
   await page.getByRole("button", { name: "Get verification code" }).click();
   const code = await page.locator("#demoPin").textContent();
+  if (!record) {
+    for (const width of [375, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.reload();
+      const pin = page.getByLabel("Verification code", { exact: true });
+      await pin.waitFor();
+      assert.ok(await pin.evaluate((input) => input === document.activeElement));
+      assert.ok(await page.getByRole("button", { name: /^Resend in / }).isDisabled());
+      assert.equal(await page.locator("#demoPin").count(), 0);
+      await page.keyboard.press("Tab");
+      assert.ok(await page.getByRole("button", { name: "Verify code", exact: true })
+        .evaluate((button) => button === document.activeElement));
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+  }
   await page
     .getByLabel("Verification code", { exact: true })
     .fill(code === "111111" ? "222222" : "111111");
@@ -167,6 +226,26 @@ try {
   await page.goto(origin + "/ledger");
   await page.getByRole("heading", { name: "Payment ledger." }).waitFor();
   if (!record) {
+    const codeLink = await issue("Verification expiry");
+    await page.goto(origin + codeLink);
+    await page.getByRole("button", { name: "Get verification code" }).click();
+    await page.locator("#demoPin").waitFor();
+    const codes = new DatabaseSync(path.join(folder, "rehearsal", "payments.sqlite"));
+    const now = Math.floor(Date.now() / 1000);
+    codes.prepare("UPDATE invites SET data=json_set(data,'$.nextCode',?,'$.pinUntil',?) WHERE id=?")
+      .run(now + 2, now + 4, "0x" + codeLink.split("/").pop().split(".")[0]);
+    codes.close();
+    await page.reload();
+    await page.locator("#pin").waitFor();
+    const resend = page.getByRole("button", { name: "Request another code" });
+    await resend.waitFor();
+    assert.ok(await resend.isEnabled());
+    await page.getByText("Your code expired.", { exact: false }).waitFor();
+    assert.equal(await page.locator("#pin").count(), 0);
+    assert.ok(await resend.evaluate((button) => button === document.activeElement));
+    await resend.click();
+    await page.locator("#demoPin").waitFor();
+    assert.ok(await page.locator("#pin").isEditable());
     const refundLink = await issue("Expiry rehearsal", true);
     // Move only the isolated rehearsal fixture to the expiry boundary.
     const db = new DatabaseSync(
@@ -239,7 +318,7 @@ try {
     );
   }
   console.log(
-    "Browser passed: 3 viewport sizes, keyboard focus, review, wrong code, reload, wallet backup, collection, follow-on payment, refund, isolated sessions and no unhandled browser errors.",
+    "Browser passed: responsive layout, keyboard focus, review, verification, wallet backup, collection, follow-on payment, refund, isolated sessions and no unhandled browser errors.",
   );
 } finally {
   await browser?.close();
