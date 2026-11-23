@@ -62,16 +62,22 @@ test("persists one invitation on retry and hides its private details", async () 
 test("codes expire, throttle resends, limit guesses and cannot be reused", async () => {
   const { app, body, tick } = fixture();
   const { link } = await app.create("a", { ...body, seconds: 86400 });
+  const timing = async () => (await app.open(link)).verification;
+  assert.deepEqual(await timing(), { requested: false, validFor: 0, retryIn: 0 });
   const { localCode } = await app.code(link);
+  assert.deepEqual(await timing(), { requested: true, validFor: 300, retryIn: 30 });
   await assert.rejects(app.code(link));
   for (let i = 0; i < 5; i++) await assert.rejects(app.verify(link, "bad"));
+  assert.equal((await timing()).validFor, 0);
   await assert.rejects(app.verify(link, localCode));
   tick(31);
   const second = await app.code(link);
   tick(301);
+  assert.deepEqual(await timing(), { requested: true, validFor: 0, retryIn: 0 });
   await assert.rejects(app.verify(link, second.localCode));
   const third = await app.code(link);
   await app.verify(link, third.localCode);
+  assert.equal((await timing()).validFor, 0);
   await assert.rejects(app.verify(link, third.localCode));
 });
 test("collects to bound wallet and preserves balance through a follow-on transfer", async () => {
