@@ -12,6 +12,20 @@ The builder selected [concept 08](visual-concepts/08-pocket-fold.png). The organ
 
 Use pearl paper (#f6f5f1), ultramarine (#2939ae), tangerine (#ff824b), dark text on the primary action and the bundled Outfit typeface. The slip rises 10 px over 220 ms when revealed. Reduced-motion mode shows the finished position immediately. The previous printed-slip direction above records the earlier design.
 
+## Motion pass · 24 November 2026
+
+The envelope tells the story. Each state change is something it does, and each motion explains a real event:
+
+- **Counter.** The envelope floats and tilts slightly toward the pointer. The headline's tangerine full stop drops into place.
+- **Recipient to amount.** The open pocket rises, then the slip lifts out of it. The slip's amount ticks as the organiser types.
+- **Issue.** The slip sinks into the pocket, a flap with a tangerine seal folds shut, and the envelope leaves toward the recipient. Then the issued page opens.
+- **Issued.** A three-step timeline shows funding, delivery and collection as separate events. Collection pulses while it waits.
+- **Invitation.** The pocket arrives and the slip rises. A rail shows Verify number → Set up wallet → Collect. The rehearsal code appears as an inbox message, and the code field reads as six slots.
+- **Collected.** The amount counts up and a "Collected" ink stamp lands on the slip. Refunded and expired slips carry their own stamps. Each stamp replaces the status pill rather than covering slip details, and the pill text stays available to screen readers.
+- **Ledger.** Totals count up, each funnel bar fills to its share of invitations, and rows stagger in.
+
+Entrances play only when the page changes, not when a step re-renders. All motion uses CSS and the Web Animations API, with no added library. Under reduced motion everything appears in its final state immediately, and no app state waits on an animation. The regression suite runs with reduced motion. The recorded demo runs with motion.
+
 ## Architecture review
 
 Use one Node 22 service, SQLite for durable invitations and throttles, a bundled browser client and one immutable Solidity escrow for the six-decimal festival token. A phone record stays off-chain. A private random link is distinct from the public on-chain ID. A server-generated ML-DSA-87 attestation authorises one destination. Recipient submits directly. The escrow independently checks proof of possession and signs over the full settlement domain. An organiser can recover expired deposits. A failed SMS must preserve the funded claim and permit redelivery.

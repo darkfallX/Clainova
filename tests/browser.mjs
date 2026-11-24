@@ -36,10 +36,12 @@ try {
     headless: true,
   });
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    reducedMotion: "reduce",
+    // The recording is 16:9 throughout so the video has no bars.
+    viewport: { width: 1440, height: record ? 810 : 900 },
+    // The regression suite runs without motion; the recorded demo shows it.
+    reducedMotion: record ? "no-preference" : "reduce",
     ...(record
-      ? { recordVideo: { dir: folder, size: { width: 1440, height: 900 } } }
+      ? { recordVideo: { dir: folder, size: { width: 1440, height: 810 } } }
       : {}),
   });
   if (record) {
@@ -105,7 +107,7 @@ try {
   await page.goto(origin);
   await page.getByLabel("Recipient phone number").waitFor();
   for (const width of [375, 768, 1440]) {
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width, height: record ? 810 : 900 });
     assert.ok(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -155,6 +157,7 @@ try {
     fs.mkdirSync("submission", { recursive: true });
     await page.setViewportSize({ width: 1440, height: 810 });
     await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(1400); // let the envelope settle after its entrance
     await page.screenshot({ path: "submission/cover.png" });
   }
   const link = await issue("Workshop speaker fee");
@@ -270,6 +273,7 @@ try {
   await hold();
   const second = await browser.newContext({
     viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
   });
   const mobile = await second.newPage();
   await mobile.goto(origin + "/ledger");

@@ -15,7 +15,11 @@ import {
   on,
   click,
   api,
+  short,
+  statusClass,
+  checkIcon,
 } from "./view.js";
+import { seal, stamp, countUp, tick, tilt, stagger } from "./motion.js";
 let cfg, local, wallet;
 const currentPath = location.pathname,
   link = currentPath.startsWith("/c/") ? currentPath.slice(3) : "";
@@ -52,7 +56,7 @@ function walletBox() {
     return (
       '<div class="wallet"><h3>Your ' +
       (local ? "rehearsal" : "testnet") +
-      ' wallet</h3><p class="code">' +
+      ' wallet</h3><p class="code wallet-address">' +
       esc(wallet.current.address) +
       '</p><div class="actions">' +
       (!wallet.external ? action("backup", "Save encrypted backup") : "") +
@@ -67,7 +71,7 @@ function walletBox() {
       : "Choose a passphrase to encrypt your new wallet on this device. Save the backup so you can use it elsewhere.") +
     '</p><form id="walletForm"><div class="field"><label for="password">Wallet passphrase</label><input type="password" id="password" minlength="10" required autocomplete="' +
     (wallet.saved ? "current" : "new") +
-    '-password"></div><button class="secondary">' +
+    '-password"></div><button class="primary">' +
     (wallet.saved ? "Unlock wallet" : "Create my wallet") +
     '</button></form><details><summary>More wallet options</summary><div class="field"><label for="restore">Restore an encrypted Clainova backup</label><input id="restore" type="file" accept=".json,application/json"></div>' +
     (!local ? action("qorex", "Connect QoreX account") : "") +
@@ -109,6 +113,7 @@ async function signIn(next) {
       "Sign in to pay someone by phone number. If you received an invitation, open the link in your message.",
     ) +
       '<form id="login" class="formstack copy"><div class="field"><label for="pass">Organiser password</label><input id="pass" type="password" required autocomplete="current-password"></div><button class="primary">Sign in</button></form>',
+    "signin",
   );
   on("#login", "submit", async () => {
     await api("/api/login", { password: el("#pass").value });
@@ -161,13 +166,14 @@ async function counter() {
     <div class="counter-scene">
       <div id="closedPocket" class="closed-pocket">
         <p class="scene-title">Pay by phone<span>.</span></p>
-        <img src="/pocket-fold.webp" alt="" width="1152" height="768" fetchpriority="high">
+        <div class="envelope"><img src="/pocket-fold.webp" alt="" width="1152" height="768" fetchpriority="high"></div>
       </div>
       <div id="openPocket" hidden>${receipt()}</div>
     </div>
     <section class="formside counter-sheet">${steps}</section>
   </div>
-  <div class="strip"><span>${local ? "Rehearsal balance · " + money(info.balance) + " test fUSD" : "QoreChain Diana · ERC-20 test fUSD"}</span><a href="/ledger">View ledger <span aria-hidden="true">↗</span></a></div>`);
+  <div class="strip"><span>${local ? "Rehearsal balance · " + money(info.balance) + " test fUSD" : "QoreChain Diana · ERC-20 test fUSD"}</span><a href="/ledger">View ledger <span aria-hidden="true">↗</span></a></div>`, "counter");
+  tilt(el(".counter-scene"));
 
   let recipient = "";
   const phone = el("#phone");
@@ -210,8 +216,11 @@ async function counter() {
     showAmount(true);
   });
   click("#editRecipient", () => showAmount(false));
-  el("#payment").oninput = () => {
-    el("#slipAmount").textContent = /^\d+(\.\d*)?$/.test(amount.value) ? amount.value : "—";
+  el("#payment").oninput = (e) => {
+    const shown = /^\d+(\.\d*)?$/.test(amount.value) ? amount.value : "—";
+    if (e.target === amount && el("#slipAmount").textContent !== shown)
+      tick(el("#slipAmount"));
+    el("#slipAmount").textContent = shown;
     const duration = period.selectedOptions[0].text.split(" · ")[0];
     el("#periodSummary").textContent = duration + " to collect";
     el("#slipExpiry").textContent = "Within " + duration;
@@ -268,6 +277,7 @@ async function counter() {
           row = await api("/api/payments/" + row.id + "/deliver", {});
         }
         close();
+        await seal(el("#openPocket .press"));
         issued(row);
       });
     }
@@ -275,31 +285,58 @@ async function counter() {
   });
 }
 function issued(row) {
+  // Funding, delivery and collection are separate events; show each truthfully.
+  const sent = row.delivery && row.delivery !== "unsent";
+  const steps = [
+    [
+      true,
+      local ? "Funds reserved" : "Escrow funded",
+      money(row.amount) +
+        " test fUSD " +
+        (local ? "on the rehearsal ledger" : "held by ClainovaClaims"),
+    ],
+    [
+      sent,
+      sent
+        ? local
+          ? "Invitation ready"
+          : "Invitation sent"
+        : "Invitation not sent yet",
+      sent
+        ? local
+          ? "In the rehearsal inbox"
+          : "Accepted by the SMS provider"
+        : "Send it again from the ledger",
+    ],
+    [false, "Waiting for collection", row.mask + " · by " + date(row.expiry)],
+  ];
+  const current = steps.findIndex(([done]) => !done);
   main(
-    title(
-      "Payment issued.",
-      local
-        ? "Your invitation is ready in the rehearsal inbox."
-        : "The SMS provider accepted the invitation.",
-    ) +
-      layout(
-        "<h2>Collection details</h2>" +
-          summary([
-            ["Recipient", row.mask],
-            ["Amount", money(row.amount) + " test fUSD"],
-            ["Expires", date(row.expiry)],
-            ["Delivery", row.delivery],
-          ]) +
-          '<div class="actions">' +
-          (local
-            ? '<a class="button" href="/c/' +
-              esc(row.link) +
-              '">Open recipient inbox</a>'
-            : "") +
-          '<a class="secondary" href="/ledger">View ledger</a></div>',
-        receipt(row),
-      ),
+    `<div class="issued">
+      <section class="issued-copy">
+        <p class="eyebrow">Sealed · Ref ${esc(row.id.slice(2, 10).toUpperCase())}</p>
+        <div class="intro"><h1>Payment issued.</h1><p>${
+          local
+            ? "Your invitation is ready in the rehearsal inbox."
+            : "The SMS provider accepted the invitation."
+        }</p></div>
+        <ol class="timeline" aria-label="Payment progress">${steps
+          .map(
+            ([done, head, detail], i) =>
+              `<li class="${done ? "done" : ""}"${i === current ? ' aria-current="step"' : ""}><strong>${esc(head)}</strong><span>${esc(detail)}</span>${done ? '<span class="visually-hidden">Complete</span>' : ""}</li>`,
+          )
+          .join("")}</ol>
+        <div class="actions">${
+          local
+            ? '<a class="button" href="/c/' + esc(row.link) + '">Open recipient inbox <span class="arrow" aria-hidden="true">→</span></a>'
+            : ""
+        }<a class="secondary" href="/ledger">View ledger</a></div>
+      </section>
+      ${receipt(row)}
+    </div>`,
+    "issued",
   );
+  stagger([...document.querySelectorAll(".timeline li")]);
 }
 async function ledger() {
   if (!cfg.session) return signIn(ledger);
@@ -332,7 +369,9 @@ async function ledger() {
         esc(r.id.slice(2, 10)) +
         "</p></div><strong>" +
         money(r.amount) +
-        ' test fUSD</strong><span class="status">' +
+        ' test fUSD</strong><span class="status ' +
+        statusClass(state(r)) +
+        '">' +
         state(r) +
         "</span>" +
         action("row" + i, "View receipt") +
@@ -348,7 +387,16 @@ async function ledger() {
     ) +
       '<div class="stats">' +
       stats
-        .map(([k, v]) => "<div><strong>" + v + "</strong>" + k + "</div>")
+        .map(
+          ([k, v]) =>
+            '<div><strong data-count="' +
+            v +
+            '">' +
+            v +
+            "</strong>" +
+            k +
+            '<span class="bar-track" aria-hidden="true"><span class="bar-fill"></span></span></div>',
+        )
         .join("") +
       '</div><div class="log">' +
       (entries ||
@@ -356,7 +404,21 @@ async function ledger() {
       '</div><div class="actions">' +
       action("refresh", "Refresh ledger") +
       "</div>",
+    "ledger",
   );
+  // Each bar shows its count as a share of funded invitations.
+  const fills = document.querySelectorAll(".bar-fill");
+  stats.forEach(([, v], i) => {
+    const share = funded.length ? Math.min(1, v / funded.length) : 0;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => fills[i]?.style.setProperty("--share", String(share))),
+    );
+  });
+  if (el("#main").classList.contains("enter"))
+    document
+      .querySelectorAll(".stats strong")
+      .forEach((n) => countUp(n, Number(n.dataset.count), (x) => String(Math.round(x)), 700));
+  stagger([...document.querySelectorAll(".entry")]);
   click("#refresh", ledger);
   rows.forEach((r, i) =>
     click("#row" + i, () => {
@@ -442,6 +504,7 @@ const grantKey = "clainova.grant." + link;
 let demoPin = "";
 let verificationTimer;
 let verifiedToken = sessionStorage.getItem(grantKey);
+let justCollected = false;
 
 function verificationStep({ requested, validFor }) {
   const hint = validFor
@@ -455,10 +518,10 @@ function verificationStep({ requested, validFor }) {
   if (validFor) {
     contents += '<div id="codeEntry">';
     if (local && demoPin)
-      contents += '<p class="notice">Rehearsal inbox · code <strong id="demoPin">' +
-        esc(demoPin) + "</strong></p>";
+      contents += '<div class="inbox"><span class="inbox-label">Rehearsal inbox</span><p class="bubble">Your Clainova code is <strong id="demoPin">' +
+        esc(demoPin) + "</strong>. Don’t share it with anyone.</p></div>";
     contents += '<form id="verify"><div class="field"><label for="pin">Verification code</label>' +
-      '<input id="pin" aria-describedby="codeHint" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></div>' +
+      '<input id="pin" class="otp" aria-describedby="codeHint" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="······" required></div>' +
       '<button class="primary">Verify code</button></form></div>';
   }
   return contents + '<div class="actions">' +
@@ -494,6 +557,8 @@ async function collect() {
   clearTimeout(verificationTimer);
   const label = state(r);
   if (r.state === "collected") {
+    const celebrate = justCollected;
+    justCollected = false;
     main(
       title(
         "Payment collected.",
@@ -503,7 +568,7 @@ async function collect() {
           "<h2>Collection receipt</h2>" +
             summary([
               ["Received", money(r.amount) + " test fUSD"],
-              ["Wallet", r.destination],
+              ["Wallet", short(r.destination)],
               [
                 "Since invitation opened",
                 r.opened && r.ended
@@ -515,7 +580,12 @@ async function collect() {
             '<div id="follow"></div>',
           receipt(r),
         ),
+      "collected",
     );
+    if (celebrate) {
+      countUp(el("#slipAmount"), r.amount, money, 900);
+      stamp(el(".press"));
+    }
     bindWallet(collect);
     if (wallet.current?.address === r.destination) {
       const balance = await wallet.balance();
@@ -556,17 +626,34 @@ async function collect() {
             ? "The funds were returned to the sender."
             : "The sender still needs to fund this payment.",
       ) + receipt(r),
+      "closed",
     );
     return;
   }
   const token = verifiedToken;
+  const stage = !token ? 0 : wallet.current ? 2 : 1;
+  const rail =
+    '<ol class="rail" aria-label="Collection steps">' +
+    ["Verify number", "Set up wallet", "Collect"]
+      .map((name, i) =>
+        i < stage
+          ? '<li class="done">' + checkIcon + name + '<span class="visually-hidden"> (complete)</span></li>'
+          : "<li" + (i === stage ? ' aria-current="step"' : "") + ">" + name + "</li>",
+      )
+      .join("") +
+    "</ol>";
   let contents =
+    rail +
     '<h1>A payment for you.</h1><p class="helper claim-intro">Verify your number and collect into your own wallet.</p>';
   if (!token) {
     contents += verificationStep(r.verification);
   } else {
     contents +=
-      '<div class="step"><span class="status">Number verified</span>' +
+      '<div class="step"><p class="confirmed">' +
+      checkIcon +
+      "Number verified · " +
+      esc(r.mask) +
+      "</p>" +
       walletBox();
     if (wallet.current)
       contents +=
@@ -583,11 +670,12 @@ async function collect() {
         action("claim", "Collect " + money(r.amount) + " test fUSD", true) +
         "</div>";
     contents +=
-      '<div class="actions">' +
-      action("again", "Verify number again") +
-      "</div></div>";
+      '<div class="actions"><button type="button" id="again" class="secondary quiet">Verify number again</button></div></div>';
   }
-  main(`<div class="claim-layout">${receipt(r)}<section class="formside claim-sheet">${contents}</section></div>`);
+  main(
+    `<div class="claim-layout">${receipt(r)}<section class="formside claim-sheet">${contents}</section></div>`,
+    "claim",
+  );
   if (!token) {
     startVerificationTimer(r.verification);
     el("#pin")?.focus({ preventScroll: true });
@@ -631,7 +719,7 @@ async function collect() {
       "Approve collection",
       summary([
         ["Receive", money(r.amount) + " test fUSD"],
-        ["Wallet", wallet.current.address],
+        ["Wallet", short(wallet.current.address)],
         ["Network", cfg.mode],
         [
           "Fees",
@@ -663,6 +751,7 @@ async function collect() {
       close();
       sessionStorage.removeItem(grantKey);
       verifiedToken = "";
+      justCollected = true;
       await collect();
     });
   });
@@ -681,6 +770,7 @@ function legal() {
         ? "<h2>Phone numbers and codes</h2><p>The verifier stores the number encrypted and uses it to send the invitation and one-time codes. The ledger shows only its last four digits. Africa’s Talking receives the number and message in SMS mode. The rehearsal inbox stays on the local machine.</p><h2>Public payment records</h2><p>Escrow transactions expose addresses, amounts and timing. The private invitation link, note, number and code stay off-chain. The operator can read notes and decrypt phone numbers. Ask the organiser who invited you to remove the off-chain record after settlement. Public chain records persist.</p><h2>Wallet storage</h2><p>Your browser encrypts its wallet backup with your passphrase and stores it on this device. Save a copy before clearing browser data. The verifier cannot restore a lost passphrase. Browser cookies keep organiser sessions separate.</p>"
         : "<h2>Test assets</h2><p>Only use festival test tokens. They have no cash value. Use a dedicated test wallet, send invitations only to people expecting payment, and confirm the phone number before issuing one.</p><h2>Collection and refunds</h2><p>A verification code establishes current access to the number. A single verifier authorises the receiving wallet. After expiry, anyone may call the escrow refund function. Only the original sender receives the refund.</p><h2>Rehearsal mode</h2><p>The local ledger and inbox are for practice. Testnet mode uses external services and requires network fees in test QOR. SMS delivery and transaction inclusion can take time.</p>") +
       "</article>",
+    "legal" + currentPath,
   );
 }
 async function start() {
@@ -695,6 +785,9 @@ async function start() {
         ? "#ledgerNav"
         : null;
   if (nav) el(nav).setAttribute("aria-current", "page");
+  // A testnet recipient has no organiser session, so the organiser menu
+  // would only lead to a sign-in page. Rehearsal keeps it for the demo.
+  if (link && !local) el(".bar nav").hidden = true;
   if (link) return collect();
   if (currentPath === "/ledger") return ledger();
   if (currentPath === "/privacy" || currentPath === "/terms") return legal();
@@ -704,5 +797,6 @@ start().catch((err) => {
   main(
     title("Unable to open this page.", esc(err.message)) +
       '<a class="secondary" href="">Retry</a>',
+    "error",
   );
 });

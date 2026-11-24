@@ -18,6 +18,23 @@ export const date = (t) =>
   });
 export const title = (h, p) =>
   '<div class="intro"><h1>' + h + "</h1><p>" + p + "</p></div>";
+// Middle-truncated address for summaries; the full value stays in the title.
+export const short = (address = "") =>
+  address.length > 16 ? address.slice(0, 8) + "…" + address.slice(-6) : address;
+export const statusClass = (label) =>
+  ({
+    Collected: "status-collected",
+    Expired: "status-expired",
+    Refunded: "status-refunded",
+    "Awaiting deposit": "status-draft",
+  })[label] || "";
+export const checkIcon =
+  '<svg class="check" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="9"/><path d="M5 9.2l2.6 2.6L13 6.4"/></svg>';
+const stamps = {
+  Collected: ["Collected", "stamp-collected"],
+  Refunded: ["Refunded", "stamp-refunded"],
+  Expired: ["Expired", "stamp-expired"],
+};
 export function state(r) {
   return r.state === "funded" && r.expiry <= Date.now() / 1000
     ? "Expired"
@@ -29,9 +46,12 @@ export function state(r) {
       }[r.state] || "Preview";
 }
 export function receipt(r = {}) {
+  const label = state(r);
+  const mark = stamps[label];
   return `<aside class="press" aria-label="Payment slip">
     <div class="receipt">
-      <div class="receipttop"><strong>Payment slip</strong><span class="slip-status">${esc(state(r))}</span></div>
+      <div class="receipttop"><strong>Payment slip</strong><span class="slip-status ${statusClass(label)}${mark ? " visually-hidden" : ""}">${esc(label)}</span></div>
+      ${mark ? `<div class="stamp ${mark[1]}" aria-hidden="true">${mark[0]}<small>Clainova</small></div>` : ""}
       <div class="total"><span id="slipAmount">${r.amount == null ? "—" : esc(money(r.amount))}</span> <small>test fUSD</small></div>
       ${r.note ? `<p class="slip-note">${esc(r.note)}</p>` : ""}
       <dl>
@@ -41,10 +61,21 @@ export function receipt(r = {}) {
       </dl>
     </div>
     <div class="pocket-front" aria-hidden="true"></div>
+    <div class="pocket-flap" aria-hidden="true"></div>
   </aside>`;
 }
-export const main = (html) => {
-  el("#main").innerHTML = html;
+// Render a page. The entrance choreography runs only when the scene changes,
+// so re-rendering a step within the same page does not replay it.
+let scene = null;
+export const main = (html, next = "") => {
+  const node = el("#main");
+  node.innerHTML = html;
+  node.classList.remove("enter");
+  if (next !== scene) {
+    void node.offsetWidth;
+    node.classList.add("enter");
+  }
+  scene = next;
 };
 let timer;
 export function status(text, timeout = 0) {

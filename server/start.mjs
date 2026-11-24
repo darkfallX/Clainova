@@ -77,6 +77,12 @@ async function handle(req, res) {
     "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://evm-testnet.qore.host https://api-testnet.qore.host; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   );
   const pathname = new URL(req.url, origin).pathname;
+  // Rehearsal cookies and origin checks are bound to 127.0.0.1. Send a
+  // visitor who typed "localhost" to the same page there.
+  if (local && req.method === "GET" && req.headers.host === "localhost:" + port) {
+    res.writeHead(302, { Location: origin + pathname }).end();
+    return;
+  }
   if (local)
     requireThat(
       req.headers.host === new URL(origin).host,
