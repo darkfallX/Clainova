@@ -2,9 +2,9 @@
 
 Clainova lets a community organiser pay a workshop speaker by phone number before the speaker has a wallet. The speaker opens a private invitation, verifies the number, creates an encrypted wallet and collects test fUSD. An expired invitation makes a refund available to the original sender.
 
-**Delivery status, 23 November 2026.** ClainovaClaims is deployed on Diana at `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`. The deployed contract returned the expected festival fUSD address and ML-DSA-87 verifier key. [Deployment receipts](submission/diana-deployment.json)
+**Delivery status, 24 November 2026.** ClainovaClaims v2 is deployed on Diana at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6`. It returned the expected festival fUSD address and ML-DSA-87 verifier key. v2 adds a reentrancy guard and checked token calls after QCAI audit round 1. The first deployment, `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`, stays on-chain unchanged and is no longer used. [v2 receipts](submission/diana-deployment-v2.json) · [v1 receipts](submission/diana-deployment.json) · [QCAI audits](docs/audits/README.md) · [Security review](docs/security-review.md)
 
-Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. A funded invitation and claim on Diana, carrier delivery to a handset, and the two QCAI reports are still pending.
+Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. QCAI round 1 is complete, and round 2 on v2 is pending. A funded invitation and claim on Diana are still pending, and so is carrier delivery to a handset.
 
 [Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
