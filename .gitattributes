@@ -1,0 +1,7 @@
+# Never rewrite line endings in binary evidence (audit PDFs, screenshots, video).
+*.pdf binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.mp4 binary
+*.woff2 binary
