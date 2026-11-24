@@ -2,7 +2,8 @@ import { nativeRequest } from "./native.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
+import zlib from "node:zlib";
 import { openStore } from "./store.mjs";
 import { authority, liveAdapters } from "./network.mjs";
 import { service, equal } from "./service.mjs";
@@ -56,6 +57,65 @@ const staticFiles = {
   "/app.js": ["app.js", "application/javascript"],
   "/outfit.woff2": ["outfit.woff2", "font/woff2"],
 };
+// Behind a Cloudflare tunnel every request reaches the loopback socket, so
+// per-visitor limits would collapse into one bucket. Trust Cloudflare's
+// client header only when explicitly enabled and the socket is loopback.
+const loopback = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+function clientAddress(req) {
+  const socket = req.socket.remoteAddress || "";
+  const forwarded = req.headers["cf-connecting-ip"];
+  return env.TRUST_PROXY === "cloudflare" &&
+    loopback.has(socket) &&
+    typeof forwarded === "string" &&
+    forwarded.length <= 64
+    ? forwarded
+    : socket;
+}
+// Static files are compressed once per build and revalidated by ETag, which
+// keeps a phone on mobile data from re-downloading the 0.5 MB bundle.
+const packed = new Map();
+function staticBody(file) {
+  const full = path.join("dist", file);
+  const stamp = fs.statSync(full).mtimeMs;
+  let entry = packed.get(file);
+  if (!entry || entry.stamp !== stamp) {
+    const raw = fs.readFileSync(full);
+    const compressible = !/\.(webp|woff2)$/.test(file);
+    entry = {
+      stamp,
+      raw,
+      etag: '"' + createHash("sha256").update(raw).digest("base64url").slice(0, 22) + '"',
+      br: compressible ? zlib.brotliCompressSync(raw) : null,
+      gzip: compressible ? zlib.gzipSync(raw, { level: 9 }) : null,
+    };
+    packed.set(file, entry);
+  }
+  return entry;
+}
+function sendStatic(req, res, file, cacheable) {
+  const entry = staticBody(file);
+  res.setHeader("Vary", "Accept-Encoding");
+  if (cacheable) {
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("ETag", entry.etag);
+    // Cloudflare weakens ETags (W/"…") when it re-encodes, so compare the tag itself.
+    const tags = String(req.headers["if-none-match"] || "")
+      .split(",")
+      .map((t) => t.trim().replace(/^W\//, ""));
+    if (tags.includes(entry.etag)) {
+      res.writeHead(304).end();
+      return;
+    }
+  }
+  const accepts = String(req.headers["accept-encoding"] || "");
+  const encoding = entry.br && /\bbr\b/.test(accepts)
+    ? "br"
+    : entry.gzip && /\bgzip\b/.test(accepts)
+      ? "gzip"
+      : null;
+  if (encoding) res.setHeader("Content-Encoding", encoding);
+  res.end(encoding ? entry[encoding] : entry.raw);
+}
 function cookie(response, name, value, maxAge) {
   response.setHeader(
     "Set-Cookie",
@@ -122,7 +182,8 @@ async function handle(req, res) {
       ? ["index.html", "text/html"]
       : staticFiles[pathname];
     res.setHeader("Content-Type", type);
-    res.end(fs.readFileSync("dist/" + file));
+    // Pages keep no-store (private invitation paths); assets may revalidate.
+    sendStatic(req, res, file, !page);
     return;
   }
   const cookies = Object.fromEntries(
@@ -151,7 +212,7 @@ async function handle(req, res) {
     );
     requireThat(
       store.limit(
-        "ip:" + store.sign(req.socket.remoteAddress || ""),
+        "ip:" + store.sign(clientAddress(req)),
         150,
         60,
         now(),
@@ -191,7 +252,7 @@ async function handle(req, res) {
     };
   else if (route === "POST /api/login") {
     requireThat(
-      !local && store.limit("login:" + req.socket.remoteAddress, 8, 600, now()),
+      !local && store.limit("login:" + store.sign(clientAddress(req)), 8, 600, now()),
       "Sign-in temporarily unavailable.",
       429,
     );
