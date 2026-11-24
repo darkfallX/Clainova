@@ -434,11 +434,11 @@ async function ledger() {
             ["Delivery", r.delivery],
             ["Cohort", r.cohort],
             ...Object.entries(r.evidence || {}).map(([k, v]) => [
-              k + " fee",
-              v.feeQor + " test QOR · " + v.payer,
+              k[0].toUpperCase() + k.slice(1) + " fee",
+              v.feeQor + " test QOR · paid by " + short(v.payer),
             ]),
             ...Object.entries(r.evidence || {}).map(([k, v]) => [
-              k + " transaction",
+              k[0].toUpperCase() + k.slice(1) + " transaction",
               v.hash,
             ]),
             ...(r.destination ? [["Wallet", r.destination]] : []),
