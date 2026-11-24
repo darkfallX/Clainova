@@ -232,6 +232,11 @@ main {
 main:focus {
   outline: none;
 }
+.loading {
+  color: var(--muted);
+  font-size: 15px;
+  animation: fade-in 600ms 300ms both;
+}
 footer {
   display: flex;
   align-items: center;
