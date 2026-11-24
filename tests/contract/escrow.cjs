@@ -130,6 +130,47 @@ describe("Clainova escrow", function () {
     assert.equal(await token.balanceOf(sender.address), 100000000n);
     await assert.rejects(contract.refund(id));
   });
+  it("rejects a verifier key of zeros at deployment", async () => {
+    await assert.rejects(
+      deploy("ClainovaClaims", [token.target, new Uint8Array(2592)]),
+    );
+  });
+  it("accepts tokens that return no data and rejects tokens that return false", async () => {
+    const silent = await deploy("SilentTokenFixture");
+    const escrow = await deploy("ClainovaClaims", [silent.target, signer.publicKey]);
+    await (await silent.mint(sender.address, 5)).wait();
+    await (await silent.approve(escrow.target, 5)).wait();
+    await (await escrow.fund(E.toBeHex(7, 32), 5, deadline)).wait();
+    assert.equal(await silent.balanceOf(escrow.target), 5n);
+    const liar = await deploy("FalseTokenFixture");
+    const broken = await deploy("ClainovaClaims", [liar.target, signer.publicKey]);
+    await assert.rejects(broken.fund(E.toBeHex(8, 32), 5, deadline), /Deposit failed/);
+  });
+  it("blocks a token that re-enters during payout", async () => {
+    const evil = await deploy("ReentrantTokenFixture");
+    const escrow = await deploy("ClainovaClaims", [evil.target, signer.publicKey]);
+    await (await evil.mint(sender.address, 50)).wait();
+    await (await evil.approve(escrow.target, 50)).wait();
+    const salt = E.toBeHex(9, 32);
+    const pid = E.keccak256(
+      E.AbiCoder.defaultAbiCoder().encode(["address", "bytes32"], [sender.address, salt]),
+    );
+    await (await escrow.fund(salt, 50, deadline)).wait();
+    const bytes = await escrow.message(pid, recipient.address, deadline);
+    const sig = signer.sign(bytes);
+    await (await check.allow(signer.publicKey, sig, bytes)).wait();
+    // During the payout transfer the token tries to call claim again.
+    await (
+      await evil.arm(escrow.target, escrow.interface.encodeFunctionData("claim", [pid, deadline, sig]))
+    ).wait();
+    await assert.rejects(escrow.connect(recipient).claim(pid, deadline, sig));
+    assert.equal(await evil.balanceOf(escrow.target), 50n);
+    assert.equal((await escrow.payments(pid)).state, 1n);
+    // Control: the same claim succeeds once the token stops re-entering.
+    await (await evil.arm(E.ZeroAddress, "0x")).wait();
+    await (await escrow.connect(recipient).claim(pid, deadline, sig)).wait();
+    assert.equal(await evil.balanceOf(recipient.address), 50n);
+  });
   it("preserves escrow balances on duplicate and failed deposits", async () => {
     await assert.rejects(contract.fund(seed, 1, deadline));
     const next = E.toBeHex(999, 32);
