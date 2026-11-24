@@ -136,6 +136,12 @@ export async function openWindow(wallet, targets, api, progress, conversion) {
     throw Error(
       "The registered key does not match this wallet or lacks proof of possession.",
     );
+  // Convert the bank-coin shortfall into ERC-20 before the window opens, so the
+  // EVM approval and deposit inside the window can spend it.
+  if (conversion) {
+    progress("Converting faucet fUSD for this payment…");
+    await broadcast(null, conversion);
+  }
   progress("Opening a 120-block spending window…");
   return broadcast(targets);
 }
