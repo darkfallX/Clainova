@@ -1,10 +1,38 @@
 # Clainova
 
-Clainova lets a community organiser pay a workshop speaker by phone number before the speaker has a wallet. The speaker opens a private invitation, verifies the number, creates an encrypted wallet and collects test fUSD. An expired invitation makes a refund available to the original sender.
+**Pay someone by phone number, before they have a wallet.** An organiser funds a payment for a phone number. The recipient opens a private invitation, verifies the number, creates an encrypted wallet and collects test fUSD into an account with an ML-DSA-87 key. An expired payment can be refunded to the sender. The running example is a community organiser paying a workshop speaker.
 
-**Delivery status, 24 November 2026.** ClainovaClaims v2 is deployed on Diana at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6`. It returned the expected festival fUSD address and ML-DSA-87 verifier key. v2 adds a reentrancy guard and checked token calls after QCAI audit round 1. The first deployment, `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`, stays on-chain unchanged and is no longer used. [v2 receipts](submission/diana-deployment-v2.json) · [v1 receipts](submission/diana-deployment.json) · [QCAI audits](docs/audits/README.md) · [Security review](docs/security-review.md)
+## Check it on Diana
 
-Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. QCAI round 1 is complete, and round 2 on v2 is pending. A funded invitation and claim on Diana are still pending, and so is carrier delivery to a handset.
+On 25 November 2026 a new wallet with no account record and no test QOR collected 20 test fUSD 33 seconds after approving, then spent 1. The payment had been funded 68,759 blocks before that wallet registered its key.
+
+```sh
+npm ci
+node scripts/verify-run.mjs
+```
+
+The script is read-only, needs no keys and runs 76 checks against Diana.
+
+| Step | Transaction |
+|---|---|
+| Funded by the organiser | `0x941dfc1aa8794f6c15fe1cbf03a0dd0fe0e5320f38cb81afc3c2b9814486553b` |
+| Gas sent by the sponsor, hybrid-signed | `B6709E315792A0BE952D08ACC37BFC2B2C465966CF08FB72ACD96D88D7891A32` |
+| ML-DSA-87 key registered | `245A9CA04128FB88754764BFFDA1DA8D969891AF85966212CE4EECC686FBA238` |
+| One-call window, escrow only | `848F3585270034BEF1F43AD099DD75E857D75083C6FA43CFFEBFA79D13AAB9F6` |
+| Collected by the recipient | `0x9b01ecbeed92c1c4e3044add83d89f18d8899ae7d7e30e6d18152a2423bddd83` |
+| Recipient's own spend | `0x033c9842f0abdfd5087ae714ab5a1fd336e7c220146ce17d23839e0b50340ab3` |
+
+Five more payments on the same escrow cover a page closed right after the claim was broadcast, a refund triggered by a different account, two collections through the public demo page on an emulated slow phone, and one whose invitation and code went through the Africa’s Talking sandbox to its simulated handset. [All transactions](submission/diana-run.json)
+
+These were **team runs**. The team operated every wallet, and no code came from a carrier. Delivery to a real handset and use by someone outside the team are still to be shown.
+
+### Try it without a phone
+
+A server started with `DEMO_PAYMENTS=on` serves `/try`. Anyone can take a pre-funded payment of 1 test fUSD there and collect it on Diana. The code appears on the page, and the page says so. Everything after the code is the real flow. Demo payments stay out of the ledger's counts. A visitor keeps one payment until it is collected, and an unused one is released after two hours. `scripts/fund-demo.mjs` fills the pool.
+
+**Delivery status, 25 November 2026.** ClainovaClaims v2 is deployed on Diana at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6`. It returned the expected festival fUSD address and ML-DSA-87 verifier key. v2 adds a reentrancy guard and checked token calls after QCAI audit round 1. The first deployment, `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`, stays on-chain unchanged and is no longer used. [v2 receipts](submission/diana-deployment-v2.json) · [v1 receipts](submission/diana-deployment.json) · [Audit and PQ design](docs/AUDIT.md) · [Security review](docs/security-review.md)
+
+Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. QCAI stage 1 is complete, and stage 2 on v2 is pending. The reports and the response to each finding are in [docs/AUDIT.md](docs/AUDIT.md). Carrier delivery to a handset is pending.
 
 [Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
@@ -50,7 +78,7 @@ Browser tests launch a separate service on port 4283 with a temporary database a
 | Node and SQLite | Authenticate the single organiser, persist a payment before funding, track delivery and claims, cap verification attempts, encrypt phone records, issue short-lived attestations and reconcile Diana state. |
 | ClainovaClaims | Hold one immutable ERC-20 asset. A deposit ID commits to the sender and a random salt. A valid claim needs the registered possession-proven ML-DSA-87 destination, the verifier signature and the recipient as transaction sender. Anyone can trigger an expired refund to the deposit sender. |
 | Native lane | QoreSign builds the proof of possession. A hybrid-signed window admits at most two EVM calls for funding or one for collection. The target list contains only the required contracts, the duration is 120 blocks and the cap is 250,000 uqor. |
-| Optional sponsor | A dedicated test-only wallet sends 0.3 test QOR to a low-balance recipient. The verifier requires an active, phone-verified invitation. A durable signed transaction, per-wallet and per-invitation uniqueness and a 20-top-up rolling daily limit bound retries and cost. |
+| Optional sponsor | While collecting, a phone-verified recipient who holds less than 0.2 test QOR receives 0.3 from a dedicated test-only account. The transfer is native and hybrid-signed, so paying gas needs no open EVM window. The signed bytes are saved before broadcast. A retry resends those bytes and signs a replacement only once they can no longer land. One grant per wallet and per invitation, 20 a day. |
 
 The contract binds the attestation to its purpose, chain, contract, payment ID, destination and deadline. It terminates the claim before transferring tokens. The sender authorises the exact shortfall in token allowance by approving the payment amount when needed. The verifier signs once a destination is bound and may reissue a short-lived attestation for that same destination. Reopening a private link and verifying a new code recovers from an expired browser grant.
 
@@ -58,14 +86,16 @@ The browser-created account avoids a second wallet installation. Its QoreSign de
 
 ## Testnet deployment handoff
 
+The [Dockerfile](Dockerfile) builds one process. Give it one persistent volume at `/data`, the settings below and `TRUST_PROXY` for the host in use. The database and the sponsor queue expect a single instance.
+
 The current deployment already has its address and matching verifier seed in the operator's local configuration. Preserve the seed when moving the service to a host. Steps 2 and 3 below describe setup for a fresh deployment.
 
 1. Use a single Node process behind an HTTPS reverse proxy and attach a persistent volume. Build once with `npm ci && npm run build`. Restrict the data directory and secret configuration to the service account. Disable URL logging for private invitation paths. Back up the database and encryption key together. Do not run multiple replicas against the same sponsor account.
 2. Copy `.env.example` to `.env`. Generate independent 32-byte hexadecimal values for `DATA_KEY` and `VERIFIER_SEED` with a cryptographic secret generator. Set `OPERATOR_PASSWORD` to a distinct secret of at least 16 characters. Keep the resulting file private.
 3. Fund a dedicated coin-60 deployer on Diana, register its PQ key with proof of possession and open a short EVM window allowing contract creation. Set `DEPLOYER_PRIVATE_KEY`, run `npm run deploy:testnet` and record the confirmed address and deployment transaction. Remove the deployer key from the running application environment. Contract creation needs an unrestricted target list for this one deployment. [Deployment guide](https://docs.qorechain.io/getting-started/deploy-in-5-minutes/)
-4. Set `MODE=testnet`, `ESCROW_ADDRESS`, `PUBLIC_ORIGIN` to the public HTTPS origin, and `AT_USERNAME` and `AT_API_KEY`. Africa's Talking's `sandbox` username sends to its simulator. Real handsets need an appropriately enabled account and sender configuration for the destination. Set `AT_FROM` only when applicable. The app checks the recipient outcome before showing provider acceptance. Receipt by a handset is a separate observation. [SMS SDK](https://github.com/AfricasTalkingLtd/africastalking-node.js/)
+4. Set `MODE=testnet`, `ESCROW_ADDRESS`, `PUBLIC_ORIGIN` to the public HTTPS origin, `ORGANISER_NAME` to the name recipients will recognise in the message, and `AT_USERNAME` and `AT_API_KEY`. For a team run without SMS, set `SMS_PROVIDER=outbox`. Messages then go to a private file in the data folder, receipts say so, and `COHORT=field` is refused. Africa's Talking's `sandbox` username sends to its simulator. Real handsets need an appropriately enabled account and sender configuration for the destination. Set `AT_FROM` only when applicable. The app checks the recipient outcome before showing provider acceptance. Receipt by a handset is a separate observation. [SMS SDK](https://github.com/AfricasTalkingLtd/africastalking-node.js/)
 5. `HOST` defaults to loopback and `PORT` to 4173. Set the host as needed behind the proxy. `RPC_URL` defaults to the Diana EVM endpoint for the backend. Browser EVM and native REST connections are pinned to Diana. `DATA_DIR` defaults to `.data`. The app uses a separate database and requires explicit keys in testnet mode. Set `COHORT=field` only for deliberately observed external trials. The default is `team`.
-6. For gas sponsorship, configure a dedicated funded `SPONSOR_PRIVATE_KEY` with a registered PQ key and a live native-transfer-only EVM window. Monitor its balance and window expiry. With no sponsor, the UI links to the festival faucet. A rejected sponsored transaction can be retried from its original signed bytes. Check its hash and nonce before operator intervention. [Window reference](https://docs.qorechain.io/developer-guide/evm-window-reference/)
+6. For gas sponsorship, set `SPONSOR_MNEMONIC` to the phrase of a dedicated coin-60 test account and fund it from the faucet. The server registers its PQ key on first use. Each recipient costs about 0.33 test QOR. `GET /api/health` reports the sponsor's balance, the message channel and the latest block. With no sponsor, the UI links to the festival faucet.
 7. Start the service and sign in at the organiser counter. The wallet needs test QOR and festival fUSD. The faucet pays bank coins. When using the built-in wallet, the review dialog can convert only the ERC-20 shortfall into the organiser's own address for a disclosed native fee. An external wallet user can convert in advance. For external signing, select the same coin-60 account in QoreX and in the EVM signer. Prepare a short window with the required targets using the native CLI or SDK. For example, with the release CLI use `qorechaind tx pqc open-evm-window 120 2 250000uqor --allowed-targets TOKEN,ESCROW --from YOUR_KEY --chain-id qorechain-diana` with the account's configured hybrid signer and testnet node. For collection allow just ESCROW and one transaction. The app checks the scope before submitting an external EVM write. [Festival assets](https://docs.qorechain.io/dashboard/faucet/) · [Wallet support](https://docs.qorechain.io/developer-tools/qorex-integrations/)
 
 ## Privacy, trust and operating limits
@@ -74,7 +104,7 @@ The ledger keeps a random salt and private, authenticated invitation link separa
 
 The verifier can authorise the wrong wallet if compromised. Telecom reassignment or SIM takeover can give someone else the current code. A forwarded link reveals the receipt and masked number. On-chain amounts, dates and wallet reuse can correlate payments. There is no permanent phone-to-wallet directory. Operators can read notes and decrypt numbers. Protect and remove settled off-chain records under the organiser's retention policy. The privacy and terms screens describe these properties in the app.
 
-The board counts issued payments, opened links, successful codes and completed claims. Rehearsal measures transfers from its own signed ledger. Diana outgoing transfers recorded through the application require an actual token-transfer receipt. A new-account observation means Diana returned an absent account record before setup. It is evidence about that address, not unique people or all prior activity. Direct wallet activity outside Clainova and abandoned steps during third-party wallet prompts are not fully indexed. Live EVM receipts include the actual payer and fee when recorded. Native setup fees are displayed before signing. The number of wallet approval screens and device-level completion times require the fresh-device trial.
+The board counts issued payments, opened links, successful codes and completed claims. Rehearsal measures transfers from its own signed ledger. Diana outgoing transfers recorded through the application require an actual token-transfer receipt. If a recipient's browser closes before reporting a collection, the server finds the event on Diana by payment ID. A new-account observation means Diana returned an absent account record before setup. It is evidence about that address, not unique people or all prior activity. Direct wallet activity outside Clainova and abandoned steps during third-party wallet prompts are not fully indexed. Live EVM receipts include the actual payer and fee when recorded. Native setup fees are displayed before signing. The number of wallet approval screens and device-level completion times require the fresh-device trial.
 
 ## Dependencies and licence
 

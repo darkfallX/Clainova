@@ -16,6 +16,22 @@
 | 6 | Info | Verification | A code has 5 attempts, and each invitation can request 5 codes an hour, so at most 25 guesses an hour against 10⁶ codes. Comparisons are constant-time over hashes. | No action. |
 | 7 | Info | HTTP | The service sends a strict CSP, `no-store`, `no-referrer`, `nosniff` and `DENY` framing. Every POST must carry the exact origin and JSON. Organiser cookies are HttpOnly, SameSite=Strict and Secure on testnet. Bodies are capped at 24 kB. | No action. |
 
+## Update, 25 November 2026
+
+Claude Code's notes on its own changes. This is not an independent review.
+
+| Severity | Area | Change |
+|---|---|---|
+| Low | Gas sponsor | The sponsor used an EVM transfer, which needed a native-only window kept open by hand. It now sends a hybrid-signed native transfer, so its classical key alone cannot spend. |
+| Low | Gas sponsor | A grant could stay blocked behind a stale nonce. A replacement is now signed once the saved bytes can no longer land. Diana's index gets ten seconds before that decision, so a slower index could pay one extra grant. |
+| Low | Receipts | A closed browser left a collection without a receipt, so later spends were refused as evidence. The server now finds the event on Diana. |
+| Info | `/api/health` | Public and cached for ten seconds. It shows the block, the escrow, the message channel and the sponsor's account and balance, and no phone data. |
+| Info | Test outbox | `SMS_PROVIDER=outbox` stores phone numbers and codes in plain text in the data folder. Use it for team runs only and delete the file afterwards. |
+| Info | Public demo | `/try` hands out pre-funded payments whose code is shown on the page. Anyone can collect one, so fund only small amounts. Each network address can start five a day, each visitor holds one, and a payment bound to a wallet is never reassigned. Grants count against the sponsor's 20 a day. |
+| Info | Wallet encryption | Keystore work moved to a same-origin worker, so a slow phone no longer freezes. The recovery phrase and passphrase are passed to that worker in memory. The encryption strength is unchanged. |
+| Info | Proxy headers | `TRUST_PROXY` now also covers Fly.io and hosts that append to `X-Forwarded-For`, using only the entry the nearest proxy added. |
+| Info | Recipient page | The organiser menu was visible to recipients because a style overrode its hidden state. Fixed. |
+
 ## Operating notes for the tunnel deployment
 
 - The private invitation link is a bearer secret for viewing the receipt. Collection still needs the code sent to the phone. Don't log request URLs. `cloudflared` doesn't log paths at its default level.
