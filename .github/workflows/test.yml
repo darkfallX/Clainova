@@ -1,0 +1,30 @@
+name: Tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - run: node scripts/verify-run.mjs
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t clainova .
+      # Boots the image in rehearsal mode and loads the first page.
+      - run: |
+          docker run -d --name app --network host -e MODE=rehearsal -e PORT=4173 clainova
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:4173/ && exit 0; sleep 1; done
+          docker logs app
+          exit 1

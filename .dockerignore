@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+.data
+.env
+node_modules
+dist
+artifacts
+cache
+test-results
+docs
+submission
