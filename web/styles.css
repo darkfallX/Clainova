@@ -176,6 +176,9 @@ header {
   gap: 26px;
   align-self: stretch;
 }
+.bar nav[hidden] {
+  display: none;
+}
 .bar nav a {
   position: relative;
   display: grid;

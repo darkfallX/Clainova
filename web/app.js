@@ -1,5 +1,4 @@
-import { walletTools } from "./wallet.js";
-import { qorAddress } from "./native.js";
+import { lazyWallet } from "./lazy-wallet.js";
 import {
   el,
   esc,
@@ -20,6 +19,8 @@ import {
   checkIcon,
 } from "./view.js";
 import { seal, stamp, countUp, tick, tilt, stagger } from "./motion.js";
+// Below this balance (0.2 test QOR) a recipient is sent a gas top-up.
+const ENOUGH_GAS = 200000000000000000n;
 let cfg, local, wallet;
 const currentPath = location.pathname,
   link = currentPath.startsWith("/c/") ? currentPath.slice(3) : "";
@@ -41,7 +42,7 @@ const layout = (left, right) =>
   "</div>";
 const convertChoice = () =>
   !local && wallet.current && !wallet.external
-    ? '<p class="notice"><label><input id="convert" type="checkbox"> Convert faucet fUSD to cover a shortfall (0.1 test QOR fee).</label></p>'
+    ? '<p class="notice"><label><input id="convert" type="checkbox"> Convert faucet fUSD to cover a shortfall (0.075 test QOR fee).</label></p>'
     : "";
 const summary = (rows) =>
   '<dl class="summary">' +
@@ -112,7 +113,10 @@ async function signIn(next) {
       "Organiser sign-in",
       "Sign in to pay someone by phone number. If you received an invitation, open the link in your message.",
     ) +
-      '<form id="login" class="formstack copy"><div class="field"><label for="pass">Organiser password</label><input id="pass" type="password" required autocomplete="current-password"></div><button class="primary">Sign in</button></form>',
+      '<form id="login" class="formstack copy"><div class="field"><label for="pass">Organiser password</label><input id="pass" type="password" required autocomplete="current-password"></div><button class="primary">Sign in</button></form>' +
+      (cfg.demo
+        ? '<p class="formnote">No password? <a href="/try">Collect a test payment on Diana</a>.</p>'
+        : ""),
     "signin",
   );
   on("#login", "submit", async () => {
@@ -251,7 +255,7 @@ async function counter() {
           '<p class="notice">' +
           (local
             ? "This rehearsal uses a local inbox and test ledger. No SMS is sent."
-            : "The wallet funds escrow before Clainova sends the SMS. A new spending window costs 0.1 test QOR, plus registration if needed and EVM fees.") +
+            : "The wallet funds escrow before Clainova sends the SMS. A new spending window costs 0.05 test QOR, plus registration if needed and EVM fees.") +
           "</p>" +
           (!local ? walletBox() + convertChoice() : "") +
           (local || wallet.current
@@ -305,7 +309,7 @@ function issued(row) {
       sent
         ? local
           ? "In the rehearsal inbox"
-          : "Accepted by the SMS provider"
+          : row.delivery[0].toUpperCase() + row.delivery.slice(1)
         : "Send it again from the ledger",
     ],
     [false, "Waiting for collection", row.mask + " · by " + date(row.expiry)],
@@ -318,7 +322,7 @@ function issued(row) {
         <div class="intro"><h1>Payment issued.</h1><p>${
           local
             ? "Your invitation is ready in the rehearsal inbox."
-            : "The SMS provider accepted the invitation."
+            : "Invitation " + esc(row.delivery) + "."
         }</p></div>
         <ol class="timeline" aria-label="Payment progress">${steps
           .map(
@@ -341,7 +345,8 @@ function issued(row) {
 async function ledger() {
   if (!cfg.session) return signIn(ledger);
   const { rows, returning } = await api("/api/payments");
-  const funded = rows.filter((r) => r.state !== "draft");
+  // Demo payments are public trials, so they stay out of the counts.
+  const funded = rows.filter((r) => r.state !== "draft" && !r.demo);
   const stats = [
     ["Invitations", funded.length],
     ["Opened", funded.filter((r) => r.opened).length],
@@ -456,7 +461,7 @@ async function ledger() {
             (!local && r.state === "draft"
               ? action("fund", "Resume deposit")
               : "") +
-            (!local && r.state === "funded" && !expired
+            (!local && r.state === "funded" && !expired && !r.demo
               ? action("resend", "Send invitation again")
               : "") +
             "</div>" +
@@ -486,7 +491,7 @@ async function ledger() {
             kind: "funding",
             hash: tx.hash,
           });
-          await api("/api/payments/" + r.id + "/deliver", {});
+          if (!r.demo) await api("/api/payments/" + r.id + "/deliver", {});
           close();
           await ledger();
         });
@@ -506,19 +511,24 @@ let verificationTimer;
 let verifiedToken = sessionStorage.getItem(grantKey);
 let justCollected = false;
 
-function verificationStep({ requested, validFor }) {
+function verificationStep({ requested, validFor }, demo) {
   const hint = validFor
-    ? "Enter the six-digit code from your latest message."
+    ? demo
+      ? "Enter the six-digit code. If it is not shown, request another."
+      : "Enter the six-digit code from your latest message."
     : requested
       ? "Request a new code to continue."
-      : "Request a six-digit code for the number on the invitation.";
+      : demo
+        ? "Get a six-digit code."
+        : "Request a six-digit code for the number on the invitation.";
   let contents =
-    '<div class="step"><h3>Verify your phone number</h3><p class="helper" id="codeHint">' +
+    '<div class="step"><h3>' + (demo ? "Verify with a code" : "Verify your phone number") + '</h3><p class="helper" id="codeHint">' +
     hint + "</p>";
   if (validFor) {
     contents += '<div id="codeEntry">';
-    if (local && demoPin)
-      contents += '<div class="inbox"><span class="inbox-label">Rehearsal inbox</span><p class="bubble">Your Clainova code is <strong id="demoPin">' +
+    if (demoPin)
+      contents += '<div class="inbox"><span class="inbox-label">' +
+        (local ? "Rehearsal inbox" : "Shown here instead of an SMS") + '</span><p class="bubble">Your Clainova code is <strong id="demoPin">' +
         esc(demoPin) + "</strong>. Don’t share it with anyone.</p></div>";
     contents += '<form id="verify"><div class="field"><label for="pin">Verification code</label>' +
       '<input id="pin" class="otp" aria-describedby="codeHint" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="······" required></div>' +
@@ -644,27 +654,29 @@ async function collect() {
     "</ol>";
   let contents =
     rail +
-    '<h1>A payment for you.</h1><p class="helper claim-intro">Verify your number and collect into your own wallet.</p>';
+    '<h1>A payment for you.</h1><p class="helper claim-intro">' +
+    (r.demo
+      ? "This is a public demo payment. The code appears on this page instead of going to a phone. Everything else is the real flow on Diana."
+      : "Verify your number and collect into your own wallet.") +
+    "</p>";
   if (!token) {
-    contents += verificationStep(r.verification);
+    contents += verificationStep(r.verification, r.demo);
   } else {
     contents +=
       '<div class="step"><p class="confirmed">' +
       checkIcon +
-      "Number verified · " +
-      esc(r.mask) +
+      (r.demo ? "Code verified" : "Number verified · " + esc(r.mask)) +
       "</p>" +
       walletBox();
     if (wallet.current)
       contents +=
         (!local
           ? '<p class="code">' +
-            qorAddress(wallet.current.address) +
-            '</p><p class="helper">Setup registers your key if needed, then opens a window for this escrow. Each native approval costs 0.1 test QOR. Collection also uses EVM gas.</p><div class="actions">' +
+            wallet.qor() +
+            '</p><p class="helper">Setup registers your key if needed, then opens a window for this escrow. ' +
             (cfg.sponsored
-              ? action("sponsor", "Request gas top-up")
-              : '<a href="https://dashboard.qorechain.io/faucet" target="_blank" rel="noreferrer">Get test QOR from the faucet</a>') +
-            "</div>"
+              ? "Clainova sends this wallet the test QOR for these fees when you collect.</p>"
+              : 'Each native approval costs 0.05 test QOR. Collection also uses EVM gas.</p><div class="actions"><a href="https://dashboard.qorechain.io/faucet" target="_blank" rel="noreferrer">Get test QOR from the faucet</a></div>')
           : "") +
         '<div class="actions">' +
         action("claim", "Collect " + money(r.amount) + " test fUSD", true) +
@@ -684,7 +696,7 @@ async function collect() {
     demoPin = "";
     try {
       const response = await invite("code", {});
-      demoPin = response.localCode;
+      demoPin = response.localCode || response.pageCode;
     } finally {
       await collect();
     }
@@ -706,14 +718,6 @@ async function collect() {
     demoPin = "";
     await collect();
   });
-  click("#sponsor", async () => {
-    await invite("observe", { token, destination: wallet.current.address });
-    const { hash } = await invite("sponsor", {
-      token,
-      destination: wallet.current.address,
-    });
-    status("Top-up broadcast: " + hash, 12000);
-  });
   click("#claim", async () => {
     modal(
       "Approve collection",
@@ -725,13 +729,21 @@ async function collect() {
           "Fees",
           local
             ? "No network fees"
-            : "Up to 0.2 test QOR for setup plus EVM gas",
+            : "About 0.15 test QOR" + (cfg.sponsored ? ", sent to you first" : ""),
         ],
       ]) + action("approve", "Approve and collect", true),
     );
     click("#approve", async () => {
       if (!local)
-        await invite("observe", { token, destination: wallet.current.address });
+      {
+        const destination = wallet.current.address;
+        await invite("observe", { token, destination });
+        if (cfg.sponsored && (await wallet.gas()) < ENOUGH_GAS) {
+          status("Sending test QOR for your setup fees…");
+          await invite("sponsor", { token, destination });
+          await wallet.waitForGas(1n);
+        }
+      }
       await wallet.prepare();
       const a = await invite("attest", {
         token,
@@ -756,6 +768,27 @@ async function collect() {
     });
   });
 }
+function tryDemo() {
+  if (!cfg.demo)
+    return main(
+      title("Not available here.", "This server has no public test payments."),
+      "try",
+    );
+  main(
+    title(
+      "Collect a test payment.",
+      "1 test fUSD is waiting in the escrow on Diana. Take it into a new wallet made in your browser, then send it on. You need no phone, no extension and no QOR.",
+    ) +
+      '<div class="copy"><p>A normal recipient gets a code by SMS. Here the code is shown on the page. Test tokens have no cash value.</p><div class="actions">' +
+      action("take", "Take a test payment", true) +
+      "</div></div>",
+    "try",
+  );
+  click("#take", async () => {
+    const { link } = await api("/api/try", {});
+    location.href = "/c/" + link;
+  });
+}
 function legal() {
   const privacy = currentPath === "/privacy";
   main(
@@ -776,7 +809,9 @@ function legal() {
 async function start() {
   cfg = await api("/api/config");
   local = cfg.mode === "rehearsal";
-  wallet = walletTools(cfg, api, status);
+  wallet = lazyWallet(cfg, api, status);
+  // Fetched once the page has been drawn, before anyone needs it.
+  if (link || currentPath === "/try" || cfg.session) setTimeout(wallet.preload, 400);
   el("#network").textContent = local ? "Local rehearsal" : "Diana testnet";
   const nav =
     currentPath === "/"
@@ -787,7 +822,8 @@ async function start() {
   if (nav) el(nav).setAttribute("aria-current", "page");
   // A testnet recipient has no organiser session, so the organiser menu
   // would only lead to a sign-in page. Rehearsal keeps it for the demo.
-  if (link && !local) el(".bar nav").hidden = true;
+  if ((link || currentPath === "/try") && !local) el(".bar nav").hidden = true;
+  if (currentPath === "/try") return tryDemo();
   if (link) return collect();
   if (currentPath === "/ledger") return ledger();
   if (currentPath === "/privacy" || currentPath === "/terms") return legal();

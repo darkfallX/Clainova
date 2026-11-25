@@ -1,5 +1,5 @@
 import {
-  Wallet,
+  HDNodeWallet,
   Contract,
   BrowserProvider,
   JsonRpcProvider,
@@ -7,6 +7,7 @@ import {
   getBytes,
   parseUnits,
 } from "ethers";
+import { keystore } from "./keystore.js";
 import { qorAddress, openWindow, convertFusd } from "./native.js";
 const erc20 = [
   "function approve(address,uint256) returns(bool)",
@@ -28,23 +29,41 @@ export function walletTools(cfg, api, progress) {
   const provider = local
     ? null
     : new JsonRpcProvider(rpc, 9800, { staticNetwork: true, cacheTimeout: -1 });
+  // Reports every tenth only: redrawing on each callback slows the work itself.
+  function share(verb) {
+    let last = -1;
+    return (done) => {
+      const tenth = Math.floor(done * 10) * 10;
+      if (tenth === last) return;
+      last = tenth;
+      progress(verb + " your wallet… " + tenth + "%");
+    };
+  }
   async function unlock(password, file) {
     if (password.length < 10)
       throw Error("Use a passphrase of at least 10 characters.");
     const saved = file || localStorage.getItem(storage);
     if (saved) {
+      let opened;
       try {
-        wallet = await Wallet.fromEncryptedJson(saved, password);
+        opened = await keystore({ json: saved, password }, share("Unlocking"));
       } catch {
         throw Error("The passphrase or encrypted backup is incorrect.");
       }
-      if (!wallet.mnemonic)
+      if (!opened.phrase)
         throw Error("Choose a Clainova backup with recovery data.");
+      wallet = HDNodeWallet.fromPhrase(opened.phrase, "", opened.path);
       if (file) localStorage.setItem(storage, saved);
     } else {
-      wallet = Wallet.createRandom();
-      const json = await wallet.encrypt(password);
+      const created = HDNodeWallet.createRandom();
+      // Deliberately slow, so a stolen backup is hard to guess. Slow phones need
+      // up to half a minute, so the share done is shown.
+      const json = await keystore(
+        { phrase: created.mnemonic.phrase, password },
+        share("Encrypting"),
+      );
       localStorage.setItem(storage, json);
+      wallet = created;
     }
     external = false;
     if (provider) wallet = wallet.connect(provider);
@@ -172,6 +191,16 @@ export function walletTools(cfg, api, progress) {
       await scope([cfg.contract]);
       return confirm(new Contract(cfg.contract, escrow, wallet).refund(row.id));
     },
+    // Test QOR held by this wallet, in wei, to decide on a gas top-up.
+    gas: async () => (local ? 0n : provider.getBalance(wallet.address)),
+    async waitForGas(minimum) {
+      for (let i = 0; i < 30; i++) {
+        if ((await provider.getBalance(wallet.address)) >= minimum) return;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      throw Error("The gas top-up is still confirming. Wait a moment, then retry.");
+    },
+    qor: () => qorAddress(wallet.address),
     sign: (payload) => wallet.signMessage(getBytes(payload)),
     balance: async () =>
       local

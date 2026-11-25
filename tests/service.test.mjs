@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { getBytes, Wallet } from "ethers";
 import { openStore } from "../server/store.mjs";
-import { service } from "../server/service.mjs";
+import { service, invitationText } from "../server/service.mjs";
 import { authority } from "../server/network.mjs";
 import { paymentInput } from "../server/common.mjs";
 import { nativeKeys, signedNative } from "../web/native.js";
 import { verifyHybridTx } from "@qorechain/qoresign";
 import { decodeEvmWindowMsg } from "@qorechain/wallet-adapter";
 import { TxBody } from "cosmjs-types/cosmos/tx/v1beta1/tx.js";
-function fixture(live = null) {
+function fixture(live = null, options = {}) {
   let time = 1780000000;
   const store = openStore(":memory:", randomBytes(32)),
     signer = authority(randomBytes(32));
@@ -18,7 +18,7 @@ function fixture(live = null) {
     store,
     authority: signer,
     live,
-    config: { origin: "https://example.org" },
+    config: { origin: "https://example.org", ...options },
     clock: () => time,
   });
   const body = {
@@ -188,4 +188,96 @@ test("new coin-60 wallet signs a registration and a target-limited hybrid window
     }).valid,
     true,
   );
+});
+test("the invitation names the organiser, the amount and the reason", () => {
+  const row = { amount: 20500000, note: "Workshop speaker fee", expiry: 1796123682 };
+  assert.equal(
+    invitationText(row, "Lagos Dev Meetup"),
+    "Lagos Dev Meetup sent you 20.5 test fUSD for Workshop speaker fee. Collect with Clainova by 1 Dec: ",
+  );
+  assert.match(invitationText({ ...row, note: "" }, ""), /^An organiser sent you 20\.5 test fUSD\. /);
+});
+test("a collection the browser never reported gets its receipt, once a minute at most", async () => {
+  let chain, searches = 0;
+  const { app, body, store, tick } = fixture({
+    read: async () => chain,
+    send: async () => {},
+    recover: async (row, kind) => {
+      searches++;
+      return searches < 2 ? null : { hash: "0xabc", kind, block: 9 };
+    },
+    evidence: async (row, kind) => {
+      assert.equal(row.evidence.collection.hash, "0xabc");
+      return { hash: "0xdef", block: 10 };
+    },
+  });
+  const r = await app.create("a", { ...body, sender: Wallet.createRandom().address, seconds: 86400 });
+  const destination = Wallet.createRandom().address;
+  chain = { ...r, state: "collected", destination };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+  await app.list("a");
+  await app.list("a");
+  await settle();
+  assert.equal(searches, 1);
+  assert.equal(store.get(r.id).evidence, undefined);
+  tick(61);
+  // A spend needs the collection receipt, so it is looked up before checking.
+  const link = r.id.slice(2) + "." + store.sign("invite:" + r.id);
+  await app.recipientEvidence(link, "transfer", "0xdef");
+  assert.equal(store.get(r.id).evidence.collection.hash, "0xabc");
+  assert.equal(store.get(r.id).evidence.transfer.hash, "0xdef");
+  tick(61);
+  await app.list("a");
+  await settle();
+  assert.equal(searches, 2);
+});
+test("demo payments are opt-in, show their code, hold one per visitor and send no SMS", async () => {
+  const chain = new Map();
+  let sms = 0;
+  const live = {
+    read: async (id) => chain.get(id),
+    send: async () => sms++,
+  };
+  const off = fixture(live);
+  const request = {
+    demo: true,
+    amount: "1",
+    note: "Demo",
+    seconds: 2505600,
+    sender: Wallet.createRandom().address,
+  };
+  await assert.rejects(off.app.create("organiser", { ...request, requestKey: randomUUID() }));
+  await assert.rejects(off.app.take("v1"));
+  const { app, store, tick } = fixture(live, { demo: true });
+  async function fund() {
+    const row = await app.create("organiser", { ...request, requestKey: randomUUID() });
+    chain.set(row.id, { ...row, state: "funded" });
+    await app.list("organiser");
+    return row;
+  }
+  // A 29-day period is only for demo payments.
+  await assert.rejects(
+    app.create("organiser", { ...request, demo: false, phone: "+2348012345678", requestKey: randomUUID() }),
+  );
+  await assert.rejects(app.take("v1"), /in use/);
+  await fund();
+  await fund();
+  const { link } = await app.take("v1");
+  assert.equal((await app.take("v1")).link, link);
+  const other = await app.take("v2");
+  assert.notEqual(other.link, link);
+  await assert.rejects(app.take("v3"), /in use/);
+  const { pageCode } = await app.code(link);
+  assert.match(pageCode, /^\d{6}$/);
+  const { token } = await app.verify(link, pageCode);
+  assert.equal(sms, 0);
+  const id = "0x" + link.slice(0, 64);
+  assert.equal(store.get(id).phone, null);
+  await assert.rejects(app.deliver("organiser", id), /not sent by SMS/);
+  // A payment bound to a wallet is never handed to anyone else.
+  await app.attest(link, token, Wallet.createRandom().address);
+  tick(7201);
+  assert.equal((await app.take("v3")).link, other.link);
+  await assert.rejects(app.take("v4"), /in use/);
+  assert.equal((await app.list("organiser")).returning, 0);
 });

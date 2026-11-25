@@ -16,9 +16,13 @@ fs.copyFileSync(
   "node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2",
   "dist/outfit.woff2",
 );
+for (const file of fs.readdirSync("dist"))
+  if (/^(wallet|chunk)-[A-Z0-9]{8}\.js$/.test(file)) fs.rmSync("dist/" + file);
 await build({
-  entryPoints: ["web/app.js"],
-  outfile: "dist/app.js",
+  entryPoints: ["web/app.js", "web/keystore-worker.js"],
+  outdir: "dist",
+  splitting: true,
+  chunkNames: "[name]-[hash]",
   bundle: true,
   platform: "browser",
   format: "esm",

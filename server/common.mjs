@@ -22,10 +22,11 @@ export function address(input) {
   );
   return getAddress(input);
 }
-export function paymentInput(input) {
+// A demo payment has no phone number: its code is shown on the page.
+export function paymentInput(input, demo = false) {
   const phone = String(input.phone || "").replace(/[ ()-]/g, "");
   requireThat(
-    /^(?:\+234[1-9]\d{9}|\+254[1-9]\d{8}|\+233[1-9]\d{8}|\+27[1-9]\d{8})$/.test(
+    demo || /^(?:\+234[1-9]\d{9}|\+254[1-9]\d{8}|\+233[1-9]\d{8}|\+27[1-9]\d{8})$/.test(
       phone,
     ),
     "Enter a full mobile number in Nigeria, Kenya, Ghana or South Africa.",
@@ -44,5 +45,5 @@ export function paymentInput(input) {
     typeof input.note === "string" && input.note.length <= 80,
     "Use up to 80 characters for the payment note.",
   );
-  return { phone, amount, note: input.note.trim() };
+  return { phone: demo ? null : phone, amount, note: input.note.trim() };
 }

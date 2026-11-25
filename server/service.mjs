@@ -16,6 +16,25 @@ export const equal = (a, b) =>
   typeof a === "string" &&
   typeof b === "string" &&
   timingSafeEqual(Buffer.from(hash(a), "hex"), Buffer.from(hash(b), "hex"));
+// Names the organiser and the reason, so an expected recipient can recognise
+// the message. "test" appears because fUSD on Diana has no cash value.
+export function invitationText(row, organiser) {
+  const by = new Date(row.expiry * 1000).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+  return (
+    (organiser || "An organiser") +
+    " sent you " +
+    row.amount / 1e6 +
+    " test fUSD" +
+    (row.note ? " for " + row.note : "") +
+    ". Collect with Clainova by " +
+    by +
+    ": "
+  );
+}
 export function service({ store, authority, live, config, clock = now }) {
   const local = !live,
     chain = local ? 31337 : 9800,
@@ -62,7 +81,35 @@ export function service({ store, authority, live, config, clock = now }) {
         .reduce((v, r) => v + r.amount, 0)
     );
   }
+  // Fills in a settlement receipt the browser never reported. Runs at most once
+  // a minute per payment and never delays or fails the page that triggered it.
+  const searches = new Map();
+  function recover(row, force) {
+    const kind = { collected: "collection", refunded: "refund" }[row.state];
+    if (!live?.recover || !kind || store.get(row.id).evidence?.[kind])
+      return Promise.resolve();
+    const last = searches.get(row.id);
+    if (last && (last.running || (!force && clock() - last.at < 60)))
+      return last.job;
+    const search = { at: clock(), running: true };
+    search.job = (async () => {
+      try {
+        const fact = await live.recover(row, kind);
+        const current = store.get(row.id);
+        if (fact && !current.evidence?.[kind])
+          store.patch(row.id, {
+            evidence: { ...current.evidence, [kind]: fact },
+          });
+      } finally {
+        search.running = false;
+      }
+    })();
+    search.job.catch(() => {});
+    searches.set(row.id, search);
+    return search.job;
+  }
   async function sync(row) {
+    if (!local) recover(row);
     if (local || ["collected", "refunded"].includes(row.state)) return row;
     const p = await live.read(row.id);
     if (p.state !== "draft") {
@@ -118,7 +165,8 @@ export function service({ store, authority, live, config, clock = now }) {
       ended,
       sender,
       delivery,
-      mask: "•••• " + row.last4,
+      mask: row.demo ? "Code on this page" : "•••• " + row.last4,
+      demo: row.demo,
       ...(owner
         ? { salt: row.salt, link: local ? linkFor(id) : undefined }
         : {}),
@@ -126,6 +174,7 @@ export function service({ store, authority, live, config, clock = now }) {
   }
   async function notify(row) {
     active(row);
+    requireThat(!row.demo, "Demo payments are not sent by SMS.", 409);
     return locked("sms:" + row.id, async () => {
       requireThat(
         store.limit("notify:" + row.id, 5, 3600, clock()),
@@ -135,17 +184,15 @@ export function service({ store, authority, live, config, clock = now }) {
       if (!local)
         await live.send(
           store.decrypt(row.phone),
-          "Clainova: " +
-            row.amount / 1e6 +
-            " test fUSD. Claim by " +
-            new Date(row.expiry * 1000).toISOString().slice(0, 10) +
-            ". " +
+          invitationText(row, config.organiser) +
             config.origin +
             "/c/" +
             linkFor(row.id),
         );
       return store.patch(row.id, {
-        delivery: local ? "local inbox" : "accepted by SMS provider",
+        delivery: local
+          ? "local inbox"
+          : live.accepted || "accepted by SMS provider",
       });
     });
   }
@@ -162,10 +209,14 @@ export function service({ store, authority, live, config, clock = now }) {
     chain,
     token: FEST,
     sponsored: !!live?.sponsored,
+    demo: !local && !!config.demo,
+    health: async () => ({ ok: true, ...(live?.health ? await live.health() : {}) }),
     list: async (owner) => {
       const rows = await Promise.all(store.list(owner).map(sync));
       const recipients = new Set(
-        rows.filter((r) => r.state === "collected").map((r) => r.destination),
+        rows
+          .filter((r) => r.state === "collected" && !r.demo)
+          .map((r) => r.destination),
       );
       const returning = local
         ? [...recipients].filter((dest) =>
@@ -174,7 +225,9 @@ export function service({ store, authority, live, config, clock = now }) {
               .get(dest),
           ).length
         : new Set(
-            rows.filter((r) => r.evidence?.transfer).map((r) => r.destination),
+            rows
+              .filter((r) => r.evidence?.transfer && !r.demo)
+              .map((r) => r.destination),
           ).size;
       return {
         rows: rows.map((r) => view(r, true)),
@@ -193,10 +246,14 @@ export function service({ store, authority, live, config, clock = now }) {
         )
         .get(owner, body.requestKey);
       if (prior) return view(store.get(prior.id), true);
-      const data = paymentInput(body);
+      const demo = body.demo === true;
+      requireThat(!demo || this.demo, "Demo payments are off.", 403);
+      const data = paymentInput(body, demo);
       const seconds = Number(body.seconds);
       requireThat(
-        [86400, 604800, ...(local ? [60] : [])].includes(seconds),
+        [86400, 604800, ...(local ? [60] : []), ...(demo ? [2505600] : [])].includes(
+          seconds,
+        ),
         "Choose a listed collection period.",
       );
       const sender = local
@@ -212,10 +269,11 @@ export function service({ store, authority, live, config, clock = now }) {
       );
       const row = {
         ...data,
-        cohort: local ? "rehearsal" : config.cohort,
+        cohort: local ? "rehearsal" : demo ? "demo" : config.cohort,
+        demo: demo || undefined,
         requestKey: body.requestKey,
-        phone: store.encrypt(data.phone),
-        last4: data.phone.slice(-4),
+        phone: demo ? null : store.encrypt(data.phone),
+        last4: demo ? "" : data.phone.slice(-4),
         id,
         owner,
         sender,
@@ -223,11 +281,39 @@ export function service({ store, authority, live, config, clock = now }) {
         created: t,
         expiry: t + seconds,
         state: local ? "funded" : "draft",
-        delivery: "unsent",
+        delivery: demo ? "code shown on the page" : "unsent",
       };
       store.save(row);
       if (local) await notify(row);
       return view(store.get(id), true);
+    },
+    // Hands one funded demo payment to a visitor. A visitor keeps the same one
+    // until it is collected, and an unused one is released after two hours.
+    async take(visitor) {
+      requireThat(this.demo, "Demo payments are off.", 404);
+      return locked("demo", async () => {
+        const free = (row) =>
+          row.demo &&
+          row.state === "funded" &&
+          row.expiry > clock() + 3600;
+        const rows = store.list("organiser").filter(free);
+        const mineNow = rows.find((row) => row.takenBy === visitor);
+        for (const row of [
+          ...(mineNow ? [mineNow] : []),
+          ...rows.filter(
+            (row) => !row.bound && clock() - (row.taken || 0) > 7200,
+          ),
+        ]) {
+          if (!free(await sync(row))) continue;
+          store.patch(row.id, { taken: clock(), takenBy: visitor });
+          return { link: linkFor(row.id) };
+        }
+        requireThat(
+          false,
+          "Every test payment is in use right now. Unused ones are released after two hours.",
+          409,
+        );
+      });
     },
     async deliver(owner, id) {
       const row = await sync(mine(owner, id));
@@ -279,14 +365,18 @@ export function service({ store, authority, live, config, clock = now }) {
         attempts: 0,
         nextCode: clock() + 30,
       });
-      if (!local)
+      if (!local && !row.demo)
         await live.send(
           store.decrypt(row.phone),
           "Clainova collection code: " +
             pin +
             ". Valid for five minutes. Do not share it.",
         );
-      return local ? { localCode: pin } : { sent: true };
+      return local
+        ? { localCode: pin }
+        : row.demo
+          ? { pageCode: pin }
+          : { sent: true };
     },
     async verify(link, code) {
       const row = fromLink(link);
@@ -333,7 +423,13 @@ export function service({ store, authority, live, config, clock = now }) {
         ["transfer", "collection"].includes(kind),
         "Unknown receipt type.",
       );
-      return this.evidence(await sync(fromLink(link)), kind, hash);
+      let row = await sync(fromLink(link));
+      // A spend is checked against its collection receipt, so find that first.
+      if (kind === "transfer" && !local && !row.evidence?.collection) {
+        await recover(row, true);
+        row = store.get(row.id);
+      }
+      return this.evidence(row, kind, hash);
     },
     async operatorEvidence(owner, id, kind, hash) {
       requireThat(

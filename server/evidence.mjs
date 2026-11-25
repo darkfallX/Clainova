@@ -19,6 +19,24 @@ export async function observeWallet(address) {
   );
   return "existing account record";
 }
+// Looks up a settlement event by payment ID, for receipts whose browser closed
+// before reporting them. Diana's RPC serves at most 10,000 blocks per query.
+const EVENTS = { funding: "Funded", collection: "Collected", refund: "Refunded" };
+export async function findEvidence(rpc, escrow, row, kind) {
+  const topic = escrow.interface.getEvent(EVENTS[kind]).topicHash;
+  const head = await rpc.getBlockNumber();
+  const floor = row.evidence?.funding?.block || Math.max(0, head - 400000);
+  for (let to = head; to >= floor; to -= 10000) {
+    const [log] = await rpc.getLogs({
+      address: escrow.target,
+      topics: [topic, row.id],
+      fromBlock: Math.max(floor, to - 9999),
+      toBlock: to,
+    });
+    if (log) return readEvidence(rpc, escrow, row, kind, log.transactionHash);
+  }
+  return null;
+}
 export async function readEvidence(rpc, escrow, row, kind, hash) {
   requireThat(/^0x[0-9a-fA-F]{64}$/.test(hash), "Invalid transaction hash.");
   const receipt = await rpc.getTransactionReceipt(hash);

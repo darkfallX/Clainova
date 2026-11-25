@@ -6,6 +6,7 @@ import { randomBytes, createHash } from "node:crypto";
 import zlib from "node:zlib";
 import { openStore } from "./store.mjs";
 import { authority, liveAdapters } from "./network.mjs";
+import { smsChannel } from "./sms.mjs";
 import { service, equal } from "./service.mjs";
 import { secret, now, requireThat } from "./common.mjs";
 
@@ -14,21 +15,23 @@ const env = process.env,
   local = mode === "rehearsal";
 if (!["rehearsal", "testnet"].includes(mode))
   throw Error("MODE must be rehearsal or testnet.");
-const port = Number(env.PORT || 4173),
-  origin = local
-    ? "http://127.0.0.1:" + port
-    : new URL(env.PUBLIC_ORIGIN).origin;
-if (
-  !local &&
-  (!origin.startsWith("https://") ||
-    !/^[0-9a-f]{64}$/i.test(env.DATA_KEY || "") ||
-    !/^[0-9a-f]{64}$/i.test(env.VERIFIER_SEED || "") ||
-    (env.OPERATOR_PASSWORD || "").length < 16 ||
-    !env.AT_API_KEY ||
-    !env.AT_USERNAME ||
-    !env.ESCROW_ADDRESS)
-)
-  throw Error("Missing testnet configuration. See .env.example.");
+const port = Number(env.PORT || 4173);
+if (!local) {
+  // Names every missing setting at once, and never prints a value.
+  const wrong = [
+    [/^https:\/\/[^/]+\/?$/.test(env.PUBLIC_ORIGIN || ""), "PUBLIC_ORIGIN (https origin)"],
+    [/^[0-9a-f]{64}$/i.test(env.DATA_KEY || ""), "DATA_KEY (64 hex characters)"],
+    [/^[0-9a-f]{64}$/i.test(env.VERIFIER_SEED || ""), "VERIFIER_SEED (64 hex characters)"],
+    [(env.OPERATOR_PASSWORD || "").length >= 16, "OPERATOR_PASSWORD (16 or more characters)"],
+    [/^0x[0-9a-f]{40}$/i.test(env.ESCROW_ADDRESS || ""), "ESCROW_ADDRESS"],
+    [!env.SPONSOR_PRIVATE_KEY, "SPONSOR_PRIVATE_KEY is no longer used, set SPONSOR_MNEMONIC"],
+  ].flatMap(([ok, name]) => (ok ? [] : [name]));
+  if (wrong.length)
+    throw Error("Check the testnet configuration: " + wrong.join("; ") + ".");
+}
+const origin = local
+  ? "http://127.0.0.1:" + port
+  : new URL(env.PUBLIC_ORIGIN).origin;
 const folder = path.join(env.DATA_DIR || ".data", mode);
 fs.mkdirSync(folder, { recursive: true });
 function key(name) {
@@ -40,13 +43,15 @@ function key(name) {
 }
 const store = openStore(path.join(folder, "payments.sqlite"), key("DATA_KEY"));
 const signer = authority(key("VERIFIER_SEED"));
-const live = local ? null : await liveAdapters(env, signer, store);
+const live = local ? null : await liveAdapters(env, signer, store, smsChannel(env, folder));
 const app = service({
   store,
   authority: signer,
   live,
   config: {
     origin,
+    demo: env.DEMO_PAYMENTS === "on",
+    organiser: (env.ORGANISER_NAME || "").trim().slice(0, 40),
     cohort: env.COHORT === "field" ? "field" : "team",
     contract: local ? undefined : env.ESCROW_ADDRESS,
   },
@@ -55,20 +60,24 @@ const staticFiles = {
   "/pocket-fold.webp": ["pocket-fold.webp", "image/webp"],
   "/styles.css": ["styles.css", "text/css"],
   "/app.js": ["app.js", "application/javascript"],
+  "/keystore-worker.js": ["keystore-worker.js", "application/javascript"],
   "/outfit.woff2": ["outfit.woff2", "font/woff2"],
 };
 // Behind a Cloudflare tunnel every request reaches the loopback socket, so
 // per-visitor limits would collapse into one bucket. Trust Cloudflare's
 // client header only when explicitly enabled and the socket is loopback.
 const loopback = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+// On a host, "fly" trusts Fly's own header, and "forwarded" uses the entry the
+// nearest proxy appended, because earlier entries can be written by the visitor.
 function clientAddress(req) {
   const socket = req.socket.remoteAddress || "";
-  const forwarded = req.headers["cf-connecting-ip"];
-  return env.TRUST_PROXY === "cloudflare" &&
-    loopback.has(socket) &&
-    typeof forwarded === "string" &&
-    forwarded.length <= 64
-    ? forwarded
+  const header = {
+    cloudflare: loopback.has(socket) && req.headers["cf-connecting-ip"],
+    fly: req.headers["fly-client-ip"],
+    forwarded: req.headers["x-forwarded-for"]?.split(",").pop().trim(),
+  }[env.TRUST_PROXY];
+  return typeof header === "string" && header && header.length <= 64
+    ? header
     : socket;
 }
 // Static files are compressed once per build and revalidated by ETag, which
@@ -92,11 +101,14 @@ function staticBody(file) {
   }
   return entry;
 }
-function sendStatic(req, res, file, cacheable) {
+function sendStatic(req, res, file, cacheable, hashed) {
   const entry = staticBody(file);
   res.setHeader("Vary", "Accept-Encoding");
   if (cacheable) {
-    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader(
+      "Cache-Control",
+      hashed ? "public, max-age=31536000, immutable" : "no-cache",
+    );
     res.setHeader("ETag", entry.etag);
     // Cloudflare weakens ETags (W/"…") when it re-encodes, so compare the tag itself.
     const tags = String(req.headers["if-none-match"] || "")
@@ -169,10 +181,14 @@ async function handle(req, res) {
       return;
     }
     const page =
-      ["/", "/ledger", "/privacy", "/terms"].includes(pathname) ||
+      ["/", "/try", "/ledger", "/privacy", "/terms"].includes(pathname) ||
       /^\/c\/[\da-f]{64}\.[\da-f]{64}$/.test(pathname);
+    // Split bundles have hashed names that change with every build.
+    const chunk =
+      /^\/(wallet|chunk)-[A-Z0-9]{8}\.js$/.test(pathname) &&
+      fs.existsSync(path.join("dist", pathname));
     requireThat(
-      page || Object.hasOwn(staticFiles, pathname),
+      page || chunk || Object.hasOwn(staticFiles, pathname),
       "Page unavailable.",
       404,
     );
@@ -180,10 +196,12 @@ async function handle(req, res) {
       res.setHeader("X-Robots-Tag", "noindex, nofollow");
     const [file, type] = page
       ? ["index.html", "text/html"]
-      : staticFiles[pathname];
+      : chunk
+        ? [pathname.slice(1), "application/javascript"]
+        : staticFiles[pathname];
     res.setHeader("Content-Type", type);
     // Pages keep no-store (private invitation paths); assets may revalidate.
-    sendStatic(req, res, file, !page);
+    sendStatic(req, res, file, !page, chunk);
     return;
   }
   const cookies = Object.fromEntries(
@@ -249,7 +267,22 @@ async function handle(req, res) {
       contract: app.contract,
       token: app.token,
       sponsored: app.sponsored,
+      demo: app.demo,
     };
+  else if (route === "POST /api/try") {
+    let visitor = cookies.visitor;
+    if (!/^[0-9a-f]{64}$/.test(visitor || "")) {
+      visitor = secret();
+      cookie(res, "visitor", visitor, 2592000);
+      // Only a first visit can take a new payment, so count those by address.
+      requireThat(
+        store.limit("try:" + store.sign(clientAddress(req)), 5, 86400, now()),
+        "This network has taken its test payments for today.",
+        429,
+      );
+    }
+    data = await app.take(store.sign("visitor:" + visitor));
+  } else if (route === "GET /api/health") data = await app.health();
   else if (route === "POST /api/login") {
     requireThat(
       !local && store.limit("login:" + store.sign(clientAddress(req)), 8, 600, now()),

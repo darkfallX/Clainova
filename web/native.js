@@ -13,6 +13,15 @@ import { PubKey } from "cosmjs-types/cosmos/crypto/secp256k1/keys.js";
 // The adapter exposes other wallet utilities through its entry point; bundle only its window composer.
 import { openEvmWindowMsg } from "../node_modules/@qorechain/wallet-adapter/src/evm-window.js";
 export const chainId = "qorechain-diana";
+// Diana's minimum gas price is 0.1 uqor. Paying 0.125 leaves headroom, and the
+// limits sit above measured use (registration 300k, window 190k, conversion
+// 450k, sponsor transfer 203k gas).
+export const nativeGas = {
+  setup: 400000n,
+  conversion: 600000n,
+  send: 260000n,
+};
+export const nativeFee = (gas) => String(gas / 8n);
 export const qorAddress = (address) =>
   addressFromBytes(getBytes(address)).bech32;
 export function nativeKeys(wallet) {
@@ -44,6 +53,11 @@ export function convertFusd(account, recipient, token, amount) {
 }
 export function signedNative(keys, info, targets, conversion) {
   const { account, classicalKey, pqKey } = keys;
+  const gasLimit =
+    {
+      "/cosmos.evm.erc20.v1.MsgConvertCoin": nativeGas.conversion,
+      "/cosmos.bank.v1beta1.MsgSend": nativeGas.send,
+    }[conversion?.typeUrl] || nativeGas.setup;
   const msg =
     conversion ||
     (targets
@@ -77,8 +91,8 @@ export function signedNative(keys, info, targets, conversion) {
         },
       ],
       fee: {
-        amount: [{ denom: "uqor", amount: "100000" }],
-        gasLimit: conversion ? 600000n : 400000n,
+        amount: [{ denom: "uqor", amount: nativeFee(gasLimit) }],
+        gasLimit,
       },
     }),
   ).finish();
@@ -92,6 +106,19 @@ export function signedNative(keys, info, targets, conversion) {
     mode: targets || conversion ? "hybrid" : "classicalOnly",
     signBytesVersion: "v2",
   });
+}
+// A retry after a failed EVM call can use the window that is already open.
+// Only an untouched window with exactly these targets qualifies.
+function reusable(state, targets) {
+  const allowed = (state?.allowed_targets || []).map((x) => x.toLowerCase());
+  return (
+    state?.live === true &&
+    Number(state.used_txs) === 0 &&
+    Number(state.max_txs) === targets.length &&
+    Number(state.remaining_blocks) >= 60 &&
+    allowed.length === targets.length &&
+    targets.every((t) => allowed.includes(t.toLowerCase()))
+  );
 }
 export async function openWindow(wallet, targets, api, progress, conversion) {
   const keys = nativeKeys(wallet);
@@ -142,6 +169,8 @@ export async function openWindow(wallet, targets, api, progress, conversion) {
     progress("Converting faucet fUSD for this payment…");
     await broadcast(null, conversion);
   }
+  if (reusable(await api("/api/native/window/" + keys.account), targets))
+    return "reused";
   progress("Opening a 120-block spending window…");
   return broadcast(targets);
 }
