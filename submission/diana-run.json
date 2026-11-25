@@ -1,0 +1,88 @@
+{
+  "network": "qorechain-diana",
+  "evmChainId": 9800,
+  "date": "2026-11-25",
+  "note": "Team runs. The team operated every wallet. Codes came from a labelled test outbox, the public demo page or the SMS provider's sandbox, never from a carrier. Every transaction is real and on Diana.",
+  "escrow": "0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6",
+  "token": "0x97143B771D34ddb9130b807b135Ae675A5a963CA",
+  "sponsor": "qor19ua0dd96enusf63r7fsqlrc7zzezrahvg6h2hy",
+  "payments": [
+    {
+      "label": "New wallet with zero QOR: funded first, collected later, then spent 1",
+      "id": "0x889108e1399e939e45c5087092a08d37183e6d3afc33ed06181b624c1eccf81a",
+      "amount": 20,
+      "funding": "0x941dfc1aa8794f6c15fe1cbf03a0dd0fe0e5320f38cb81afc3c2b9814486553b",
+      "recipient": "0xbF67a895AD70Ec785d6d2005EC681750C47471DE",
+      "gasTopUp": "B6709E315792A0BE952D08ACC37BFC2B2C465966CF08FB72ACD96D88D7891A32",
+      "registration": "245A9CA04128FB88754764BFFDA1DA8D969891AF85966212CE4EECC686FBA238",
+      "window": "848F3585270034BEF1F43AD099DD75E857D75083C6FA43CFFEBFA79D13AAB9F6",
+      "collection": "0x9b01ecbeed92c1c4e3044add83d89f18d8899ae7d7e30e6d18152a2423bddd83",
+      "spend": "0x033c9842f0abdfd5087ae714ab5a1fd336e7c220146ce17d23839e0b50340ab3",
+      "secondsFromApproveToCollected": 32.8,
+      "feesQor": {
+        "registration": 0.05,
+        "claimWindow": 0.05,
+        "claim": 0.0497,
+        "spendWindow": 0.05,
+        "spend": 0.0058
+      }
+    },
+    {
+      "label": "Page closed right after the claim was broadcast; the server recovered the receipt",
+      "id": "0xf88ea97c42ee947050d6000ac30cf12f718f8f6eb511295e3370fb63c94fcb30",
+      "amount": 2,
+      "funding": "0xd14242c359c4373ce6648b9855dcd1b2e4ba492faf313d5a7443a139834a2c8f",
+      "recipient": "0xc34775cD6CCCD7eed003198f259dc437fE270ea3",
+      "gasTopUp": "621F990E7CD3E46784AD23DDE36FCF9264374B5A5A7C3240405C645A31B1BABF",
+      "registration": "5079A62E6BBBFACB0A339FA1B5454DF8EEA6DF6D89708054B0E37428FE535704",
+      "window": "8D327E96CDD6A225D4FAE4E7030BD95240FFA49017B32A9AEF20541FDD90A4E0",
+      "collection": "0x575eefd064d4f5a0a98039a2e8b50f50cae75b0fcbb413a4fecca09165573d0d"
+    },
+    {
+      "label": "Expired payment: refund triggered by a different account",
+      "id": "0x8ba1038af86997e2ec00c57a02a9a8654befb22a2d09c0b1c6c319227c9fb9e7",
+      "amount": 1,
+      "funding": "0x95f139ce8d435dff62cfc7bd88a2dc0630528ff65faeb28f305f3983add18171",
+      "refund": "0xf782aa0382944938abec741252f714f1e95dc08ea8db822bd2a4f4eeb46f2c0e",
+      "setup": "The app's shortest period is 24 hours. For this run the expiry was set to 150 seconds before the deposit was signed."
+    },
+    {
+      "label": "Public demo page over the internet, emulated slow phone, first run",
+      "id": "0xcbb0de90591f077d558accf28b4b05da80513ad32c20ef76de7eb774028a1672",
+      "amount": 1,
+      "channel": "code shown on the page",
+      "funding": "0x1fa93fbb5873fd5e97e58c50d29711e029dea2de584d920e524a65de0e965801",
+      "recipient": "0xcA7E21fB61Cfb9b34611a99DdC66fd290148784d",
+      "gasTopUp": "26DE4AC94C545D280AB161F7C60B9776CD614CF8A32BC4845D18E55B10F46067",
+      "registration": "C14970D52A76AC462887DBBAAD672C4AD47F01BA41C197DE09F4349F6D7DCE9B",
+      "window": "D9B1F929E69B3CF1C05AC5FA3F53CDBF6FAE34193D2D22D1590FB1D559C10710",
+      "collection": "0x4ade2bce29919a423dcef251c41a6b90d31c4116dc0a0adc45388ee63f884d30",
+      "spend": "0x50322d079666f021e4ad1a4431656d09e0c247579a78e6e23f2ff4a193daa61c"
+    },
+    {
+      "label": "Public demo page over the internet, emulated slow phone, second run after the page was made lighter",
+      "id": "0xfbe7d04962f02dfa5dab363dd6a310e1a0ce526cd242289fabbf43d5cf098436",
+      "amount": 1,
+      "channel": "code shown on the page",
+      "funding": "0x38db99bc75c9443ba62d96bc7a24a0e5a304fe42f6b748de8d05c8248300290d",
+      "recipient": "0x5Ad99dD8fbCA75c697c4983D3E26863d70257e00",
+      "gasTopUp": "B0AB7D6F459A0989EFCE3EF4C482EFAB3575A49FC9E17307D37DC66F8148CBE9",
+      "registration": "B3394F647DF634FEE9223CF3DE28F7007592544ECF2252BB0124E7A7C1CE7CB8",
+      "window": "536A02414A9D3DBF3864C558AECAFECDF876813C7EB585387E7303D39216B038",
+      "collection": "0xd25a89e8cdbe15af748f1df4227b307b36d316f9f2298c6dd46777e9617e99d0",
+      "spend": "0xc50a8f817e544a6c1bf994f4cb2fa93b9e5c714e5b636d38ee1434f66317e171"
+    },
+    {
+      "label": "Invitation and code delivered by the Africa's Talking sandbox to its simulated handset",
+      "id": "0x92fd943667bfe9664fd29209ede5bdabe64f5612c2740c2a26693644d508f0f3",
+      "amount": 2,
+      "channel": "accepted by the SMS sandbox",
+      "funding": "0x2f75de08912714f7b3c77c97320f915ae6488e40ea1c1bca1449a7d33fed92b4",
+      "recipient": "0x04776936ba3d3562E706eA59Ea309e13002A98ee",
+      "gasTopUp": "C5992554819C0A738C57FD05F56D4791FBD0E2BBD3246BFB1D245BF2EEF82985",
+      "registration": "8D3293719F5B6A95863C6A0CB51CC0C3E9CB8E05C15C57CE6F8B57AF7B3EF91A",
+      "window": "D08F7D39862637B0557AC6937488516CF62061C78DDC3671FEF71EF4452A536D",
+      "collection": "0x3b932cfe10e2cd782bfe8bf139271c525695e7a6a097e54fcf0838ae1ae2caf2"
+    }
+  ]
+}
