@@ -181,7 +181,7 @@ async function handle(req, res) {
       return;
     }
     const page =
-      ["/", "/try", "/ledger", "/privacy", "/terms"].includes(pathname) ||
+      ["/", "/try", "/try/send", "/ledger", "/privacy", "/terms"].includes(pathname) ||
       /^\/c\/[\da-f]{64}\.[\da-f]{64}$/.test(pathname);
     // Split bundles have hashed names that change with every build.
     const chunk =
@@ -219,6 +219,23 @@ async function handle(req, res) {
     const [until, sig] = (cookies.organiser || "").split(".");
     if (Number(until) > now() && equal(sig, store.sign("operator:" + until)))
       owner = "organiser";
+  }
+  // A browser trying the public demo, known only by a random signed cookie. The
+  // signature stops anyone inventing visitors to get past the address limit.
+  function visitor() {
+    let [id, sig] = (cookies.visitor || "").split(".");
+    if (!id || !equal(sig, store.sign("visitor-cookie:" + id))) {
+      requireThat(
+        // Phones on one carrier and people in one room share an address, so this
+        // stays loose. The daily grant allowances bound the cost.
+        store.limit("try:" + store.sign(clientAddress(req)), 40, 86400, now()),
+        "This network has used its test payments for today.",
+        429,
+      );
+      id = secret();
+      cookie(res, "visitor", id + "." + store.sign("visitor-cookie:" + id), 2592000);
+    }
+    return store.sign("visitor:" + id);
   }
   let b = {};
   if (req.method === "POST") {
@@ -268,20 +285,17 @@ async function handle(req, res) {
       token: app.token,
       sponsored: app.sponsored,
       demo: app.demo,
+      demoSend: app.demo && app.sponsored,
     };
   else if (route === "POST /api/try") {
-    let visitor = cookies.visitor;
-    if (!/^[0-9a-f]{64}$/.test(visitor || "")) {
-      visitor = secret();
-      cookie(res, "visitor", visitor, 2592000);
-      // Only a first visit can take a new payment, so count those by address.
-      requireThat(
-        store.limit("try:" + store.sign(clientAddress(req)), 5, 86400, now()),
-        "This network has taken its test payments for today.",
-        429,
-      );
-    }
-    data = await app.take(store.sign("visitor:" + visitor));
+    requireThat(app.demo, "Page unavailable.", 404);
+    const who = visitor();
+    if (parts.length === 2) data = await app.take(who);
+    else if (parts[2] === "sent") data = await app.sent(who);
+    else if (parts[2] === "fund") data = await app.fundSender(who, b.destination);
+    else if (parts[2] === "send") data = await app.send(who, b);
+    else if (parts[2] === "evidence")
+      data = await app.operatorEvidence("visitor:" + who, b.id, "funding", b.hash);
   } else if (route === "GET /api/health") data = await app.health();
   else if (route === "POST /api/login") {
     requireThat(

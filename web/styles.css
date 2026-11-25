@@ -1630,3 +1630,10 @@ dialog[open]::backdrop {
     transition: none !important;
   }
 }
+
+#dialogBody .wallet + .primary {
+  margin-top: 16px;
+}
+.edit-recipient[hidden] {
+  display: none;
+}

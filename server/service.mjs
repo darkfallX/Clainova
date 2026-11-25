@@ -1,4 +1,4 @@
-import { randomInt, timingSafeEqual } from "node:crypto";
+import { randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { getBytes, verifyMessage, Wallet } from "ethers";
 import {
   FEST,
@@ -11,6 +11,7 @@ import {
   address,
   paymentInput,
 } from "./common.mjs";
+import { senderId } from "./sponsor.mjs";
 const LOCAL_CONTRACT = "0x000000000000000000000000000000000000c1a1";
 export const equal = (a, b) =>
   typeof a === "string" &&
@@ -165,10 +166,14 @@ export function service({ store, authority, live, config, clock = now }) {
       ended,
       sender,
       delivery,
-      mask: row.demo ? "Code on this page" : "•••• " + row.last4,
+      mask: row.demo
+        ? owner
+          ? "Sample number"
+          : "Code on this page"
+        : "•••• " + row.last4,
       demo: row.demo,
       ...(owner
-        ? { salt: row.salt, link: local ? linkFor(id) : undefined }
+        ? { salt: row.salt, link: local || row.demo ? linkFor(id) : undefined }
         : {}),
     };
   }
@@ -286,6 +291,42 @@ export function service({ store, authority, live, config, clock = now }) {
       store.save(row);
       if (local) await notify(row);
       return view(store.get(id), true);
+    },
+    // A visitor may send one demo payment of 1 test fUSD from a wallet of their
+    // own. Asking again returns the same payment, so a reload can resume it.
+    async send(visitor, body) {
+      requireThat(this.demo && live.sponsored, "Demo sends are off.", 404);
+      const owner = "visitor:" + visitor,
+        sender = address(body.sender);
+      return locked("send:" + visitor, async () => {
+        const [prior] = store.list(owner);
+        if (prior) {
+          requireThat(
+            prior.sender === sender,
+            "Unlock the sender wallet you started with in this browser.",
+            409,
+          );
+          return view(await sync(prior), true);
+        }
+        return this.create(owner, {
+          demo: true,
+          amount: "1",
+          note: String(body.note || "").slice(0, 80),
+          seconds: 604800,
+          requestKey: randomUUID(),
+          sender,
+        });
+      });
+    },
+    // Test QOR and 1 test fUSD for that sender wallet, once per visitor.
+    async fundSender(visitor, destination) {
+      requireThat(this.demo && live.sponsored, "Demo sends are off.", 404);
+      return live.sponsor(senderId(visitor), address(destination));
+    },
+    async sent(visitor) {
+      requireThat(this.demo, "Demo sends are off.", 404);
+      const [row] = store.list("visitor:" + visitor);
+      return { row: row ? view(await sync(row), true) : null };
     },
     // Hands one funded demo payment to a visitor. A visitor keeps the same one
     // until it is collected, and an unused one is released after two hours.

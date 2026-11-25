@@ -21,9 +21,11 @@ const escrow = [
   "function refund(bytes32)",
 ];
 const rpc = "https://evm-testnet.qore.host";
-export function walletTools(cfg, api, progress) {
+// The demo sender keeps its wallet in its own slot, so the same browser can also
+// be the recipient with a different wallet.
+export function walletTools(cfg, api, progress, slot = "") {
   const local = cfg.mode === "rehearsal",
-    storage = "clainova.keystore." + cfg.mode;
+    storage = "clainova.keystore." + cfg.mode + slot;
   let wallet,
     external = false;
   const provider = local
@@ -75,7 +77,7 @@ export function walletTools(cfg, api, progress) {
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = "Clainova-" + cfg.mode + "-wallet.json";
+    a.download = "Clainova-" + cfg.mode + slot.replace(".", "-") + "-wallet.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }

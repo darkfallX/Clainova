@@ -19,7 +19,7 @@ export const chainId = "qorechain-diana";
 export const nativeGas = {
   setup: 400000n,
   conversion: 600000n,
-  send: 260000n,
+  send: 300000n,
 };
 export const nativeFee = (gas) => String(gas / 8n);
 export const qorAddress = (address) =>

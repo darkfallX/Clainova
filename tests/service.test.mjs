@@ -281,3 +281,46 @@ test("demo payments are opt-in, show their code, hold one per visitor and send n
   await assert.rejects(app.take("v4"), /in use/);
   assert.equal((await app.list("organiser")).returning, 0);
 });
+test("a visitor sends exactly one demo payment, resumes it, and cannot reach anyone else's", async () => {
+  const chain = new Map(),
+    grants = [];
+  let sms = 0;
+  const { app, store } = fixture(
+    {
+      read: async (id) => chain.get(id) || { state: "draft" },
+      send: async () => sms++,
+      sponsored: true,
+      sponsor: async (...args) => grants.push(args),
+      evidence: async () => ({ hash: "0xabc", block: 1 }),
+    },
+    { demo: true },
+  );
+  const sender = Wallet.createRandom().address;
+  assert.deepEqual(await app.sent("v1"), { row: null });
+  await app.fundSender("v1", sender);
+  assert.deepEqual(grants, [["sender:v1", sender]]);
+  await assert.rejects(app.fundSender("v1", "not an address"));
+  const row = await app.send("v1", { sender, note: "x".repeat(200), amount: "9999", seconds: 1 });
+  assert.equal(row.amount, 1000000);
+  assert.equal(row.note.length, 80);
+  assert.equal(row.mask, "Sample number");
+  assert.equal(store.get(row.id).phone, null);
+  // Asking again resumes the same payment, and only for the same wallet.
+  assert.equal((await app.send("v1", { sender })).id, row.id);
+  await assert.rejects(app.send("v1", { sender: Wallet.createRandom().address }), /started with/);
+  chain.set(row.id, { ...row, state: "funded" });
+  const { row: mine } = await app.sent("v1");
+  assert.equal(mine.state, "funded");
+  assert.match(mine.link, /^[0-9a-f]{64}\.[0-9a-f]{64}$/);
+  assert.equal((await app.open(mine.link)).mask, "Code on this page");
+  assert.equal((await app.open(mine.link)).link, undefined);
+  // Other visitors and the organiser's own ledger and pool never include it.
+  assert.deepEqual(await app.sent("v2"), { row: null });
+  assert.equal((await app.list("organiser")).rows.length, 0);
+  await assert.rejects(app.take("v2"), /in use/);
+  await assert.rejects(app.operatorEvidence("visitor:v2", row.id, "funding", "0x1"), /unavailable/);
+  assert.equal(sms, 0);
+  // Without a sponsor there are no public sends.
+  const off = fixture({ read: async () => ({ state: "draft" }) }, { demo: true });
+  await assert.rejects(off.app.send("v1", { sender }), /off/);
+});

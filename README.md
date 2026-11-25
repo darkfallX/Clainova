@@ -28,7 +28,12 @@ These were **team runs**. The team operated every wallet, and no code came from 
 
 ### Try it without a phone
 
-A server started with `DEMO_PAYMENTS=on` serves `/try`. Anyone can take a pre-funded payment of 1 test fUSD there and collect it on Diana. The code appears on the page, and the page says so. Everything after the code is the real flow. Demo payments stay out of the ledger's counts. A visitor keeps one payment until it is collected, and an unused one is released after two hours. `scripts/fund-demo.mjs` fills the pool.
+A server started with `DEMO_PAYMENTS=on` serves `/try`. It offers two ways in, and every step is a real transaction on Diana.
+
+- **Send, then collect.** The visitor is the organiser. They create a sender wallet in the browser, the sponsor gives it 1 test fUSD and 0.3 test QOR, and that wallet registers its key, converts, opens a window and funds the escrow. Then they open the invitation and collect it with a second, separate wallet. The sender's page updates when Diana records the collection and links both transactions. This needs a sponsor.
+- **Only collect.** The visitor takes a payment from a pre-funded pool. `scripts/fund-demo.mjs` fills the pool.
+
+The code appears on the page instead of going to a phone, and the page says so. A sample number stands in for a real one, so no visitor's number is asked for or stored. Demo payments stay out of the ledger's counts. Each visitor sends one payment and holds one pool payment. An unused pool payment is released after two hours. Limits: 40 visitors a day per network address, 20 sends and 30 recipient grants a day.
 
 **Delivery status, 25 November 2026.** ClainovaClaims v2 is deployed on Diana at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6`. It returned the expected festival fUSD address and ML-DSA-87 verifier key. v2 adds a reentrancy guard and checked token calls after QCAI audit round 1. The first deployment, `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`, stays on-chain unchanged and is no longer used. [v2 receipts](submission/diana-deployment-v2.json) · [v1 receipts](submission/diana-deployment.json) · [Audit and PQ design](docs/AUDIT.md) · [Security review](docs/security-review.md)
 
@@ -78,7 +83,7 @@ Browser tests launch a separate service on port 4283 with a temporary database a
 | Node and SQLite | Authenticate the single organiser, persist a payment before funding, track delivery and claims, cap verification attempts, encrypt phone records, issue short-lived attestations and reconcile Diana state. |
 | ClainovaClaims | Hold one immutable ERC-20 asset. A deposit ID commits to the sender and a random salt. A valid claim needs the registered possession-proven ML-DSA-87 destination, the verifier signature and the recipient as transaction sender. Anyone can trigger an expired refund to the deposit sender. |
 | Native lane | QoreSign builds the proof of possession. A hybrid-signed window admits at most two EVM calls for funding or one for collection. The target list contains only the required contracts, the duration is 120 blocks and the cap is 250,000 uqor. |
-| Optional sponsor | While collecting, a phone-verified recipient who holds less than 0.2 test QOR receives 0.3 from a dedicated test-only account. The transfer is native and hybrid-signed, so paying gas needs no open EVM window. The signed bytes are saved before broadcast. A retry resends those bytes and signs a replacement only once they can no longer land. One grant per wallet and per invitation, 20 a day. |
+| Optional sponsor | While collecting, a phone-verified recipient who holds less than 0.2 test QOR receives 0.3 from a dedicated test-only account. The transfer is native and hybrid-signed, so paying gas needs no open EVM window. The signed bytes are saved before broadcast. A retry resends those bytes and signs a replacement only once they can no longer land. One grant per wallet and per invitation, 30 a day. Demo senders have a separate allowance of 20. |
 
 The contract binds the attestation to its purpose, chain, contract, payment ID, destination and deadline. It terminates the claim before transferring tokens. The sender authorises the exact shortfall in token allowance by approving the payment amount when needed. The verifier signs once a destination is bound and may reissue a short-lived attestation for that same destination. Reopening a private link and verifying a new code recovers from an expired browser grant.
 

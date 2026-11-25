@@ -19,6 +19,24 @@ export async function observeWallet(address) {
   );
   return "existing account record";
 }
+// The explorer and the native API know an EVM transaction by its native hash.
+// It is only used for links, so a slow index never blocks a receipt.
+async function nativeHash(hash) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const query = "ethereum_tx.ethereumTxHash='" + hash + "'";
+      const r = await fetch(
+        rest + "/cosmos/tx/v1beta1/txs?query=" + encodeURIComponent(query),
+        { signal: AbortSignal.timeout(4000) },
+      );
+      const [found] = (await r.json()).tx_responses || [];
+      if (found) return found.txhash;
+    } catch {
+      // Try again below.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
 // Looks up a settlement event by payment ID, for receipts whose browser closed
 // before reporting them. Diana's RPC serves at most 10,000 blocks per query.
 const EVENTS = { funding: "Funded", collection: "Collected", refund: "Refunded" };
@@ -93,6 +111,7 @@ export async function readEvidence(rpc, escrow, row, kind, hash) {
   }
   return {
     hash: receipt.hash,
+    native: await nativeHash(receipt.hash),
     block: receipt.blockNumber,
     payer: receipt.from,
     feeQor: formatEther(receipt.fee),

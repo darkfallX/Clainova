@@ -9,7 +9,16 @@ import { TxBody, TxRaw, AuthInfo } from "cosmjs-types/cosmos/tx/v1beta1/tx.js";
 import { MsgSend } from "cosmjs-types/cosmos/bank/v1beta1/tx.js";
 import { verifyHybridTx } from "@qorechain/qoresign";
 import { openStore } from "../server/store.mjs";
-import { createSponsor, hashOf, DAILY, GRANT } from "../server/sponsor.mjs";
+import {
+  createSponsor,
+  hashOf,
+  senderId,
+  DAILY,
+  GRANT,
+  SENDER_DAILY,
+  SENDER_FUSD,
+} from "../server/sponsor.mjs";
+import { FEST } from "../server/common.mjs";
 import { smsChannel } from "../server/sms.mjs";
 import { nativeKeys, qorAddress } from "../web/native.js";
 
@@ -158,6 +167,29 @@ test("grants are limited per invitation, per wallet, per balance and per day", a
   await assert.rejects(sponsor.pay("over", someone()), /budget used/);
   tick(86401);
   assert.equal((await sponsor.pay("over", someone())).status, "funded");
+});
+
+test("a demo sender gets test fUSD and gas once, from its own daily allowance", async () => {
+  const { chain, start } = fixture();
+  const sponsor = await start(),
+    to = someone();
+  const first = await sponsor.pay(senderId("v1"), to);
+  assert.deepEqual(await sponsor.pay(senderId("v1"), to), first);
+  assert.equal(chain.sent.length, 1);
+  assert.deepEqual(MsgSend.decode(chain.sent[0].message.value).amount, [
+    { denom: "erc20:" + FEST, amount: String(SENDER_FUSD) },
+    { denom: "uqor", amount: String(GRANT) },
+  ]);
+  // The same visitor cannot fund a second wallet, nor a second visitor this one.
+  await assert.rejects(sponsor.pay(senderId("v1"), someone()), /already has/);
+  await assert.rejects(sponsor.pay(senderId("v2"), to), /already received/);
+  for (let i = 1; i < SENDER_DAILY; i++)
+    await sponsor.pay(senderId("n" + i), someone());
+  await assert.rejects(sponsor.pay(senderId("over"), someone()), /used up/);
+  // Senders using up their allowance leaves the recipients' one untouched.
+  for (let i = 0; i < DAILY; i++)
+    assert.equal((await sponsor.pay("r" + i, someone())).status, "funded");
+  await assert.rejects(sponsor.pay("r-over", someone()), /budget used/);
 });
 
 test("an empty sponsor or an unreachable chain never stops the server or burns the grant", async () => {

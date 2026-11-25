@@ -32,5 +32,5 @@ Node 22 and SQLite store the invitations. Phone numbers are encrypted. Two-stage
 | Network features | Tick EVM window (scoped), Solidity PQC signature check and Solidity PQC key status. Keep the three already verified. |
 | Addresses | Add `qor1c3esrl8avk9taymhdc48l88grnrl2mck8k9t5v` (organiser), `qor19ua0dd96enusf63r7fsqlrc7zzezrahvg6h2hy` (sponsor and deployer) and `qor1han639ddwrk8shtdyqz7c6qh2rz8guw7xwn6w3` (test recipient), then press **Check again**. |
 | Quantum Campus | Keep only with proof of enrolment. |
-| Demo link | The public address with `/try` at the end, once it is on a permanent host. |
+| Demo link | The public address with `/try` at the end, once it is on a permanent host. Visitors can send as the organiser and collect as the recipient. |
 | Video | Required, up to 3 minutes. |

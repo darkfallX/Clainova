@@ -3,15 +3,20 @@ import { MsgSend } from "cosmjs-types/cosmos/bank/v1beta1/tx.js";
 import { AuthInfo, TxRaw } from "cosmjs-types/cosmos/tx/v1beta1/tx.js";
 import { nativeKeys, qorAddress, signedNative } from "../web/native.js";
 import { broadcast, chainRead } from "./native.mjs";
-import { now, requireThat } from "./common.mjs";
+import { FEST, now, requireThat } from "./common.mjs";
 
 // One grant pays for key registration, the collection window, the claim, a
 // spending window and a first transfer. GRANT is in uqor (0.3 test QOR).
 export const GRANT = 300000n;
 export const ENOUGH = parseEther("0.2");
-export const DAILY = 20;
+export const DAILY = 30;
+// Visitors who try sending get this much test fUSD as well (1 fUSD), from a
+// separate daily allowance so they cannot use up the recipients' one.
+export const SENDER_FUSD = 1000000n;
+export const SENDER_DAILY = 20;
+export const senderId = (visitor) => "sender:" + visitor;
 // A grant plus its own network fee.
-const RESERVE = parseEther("0.34");
+const RESERVE = parseEther("0.35");
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const hashOf = (raw) =>
@@ -21,13 +26,17 @@ const sequenceOf = (raw) =>
     AuthInfo.decode(TxRaw.decode(Buffer.from(raw, "base64")).authInfoBytes)
       .signerInfos[0].sequence,
   );
-export const sendMessage = (from, to) => ({
+export const sendMessage = (from, to, fusd = 0n) => ({
   typeUrl: "/cosmos.bank.v1beta1.MsgSend",
   value: MsgSend.encode(
     MsgSend.fromPartial({
       fromAddress: from,
       toAddress: to,
-      amount: [{ denom: "uqor", amount: String(GRANT) }],
+      // Coins must be listed in order of denomination.
+      amount: [
+        ...(fusd ? [{ denom: "erc20:" + FEST, amount: String(fusd) }] : []),
+        { denom: "uqor", amount: String(GRANT) },
+      ],
     }),
   ).finish(),
 });
@@ -92,6 +101,7 @@ export function createSponsor({
   }
 
   async function payGas(id, destination) {
+    const sender = id.startsWith("sender:");
     await ready();
     const prior = store.db.prepare("SELECT * FROM sponsor WHERE id=?").get(id);
     requireThat(
@@ -119,7 +129,7 @@ export function createSponsor({
       // The saved bytes failed, or another transaction used their sequence.
       // They can never land, so a replacement cannot pay twice.
     } else {
-      if ((await balance(destination)) >= ENOUGH)
+      if (!sender && (await balance(destination)) >= ENOUGH)
         return { status: "sufficient" };
       requireThat(
         !store.db
@@ -129,11 +139,15 @@ export function createSponsor({
         409,
       );
       const used = store.db
-        .prepare("SELECT count(*) AS n FROM sponsor WHERE created>?")
-        .get(clock() - 86400).n;
+        .prepare(
+          "SELECT count(*) AS n FROM sponsor WHERE created>? AND (id LIKE 'sender:%')=?",
+        )
+        .get(clock() - 86400, sender ? 1 : 0).n;
       requireThat(
-        used < DAILY,
-        "Daily sponsor budget used. Use the festival faucet.",
+        used < (sender ? SENDER_DAILY : DAILY),
+        sender
+          ? "Today's test sends are used up. You can still collect a test payment."
+          : "Daily sponsor budget used. Use the festival faucet.",
         429,
       );
       // Nothing is saved for a grant the sponsor could not afford.
@@ -148,7 +162,11 @@ export function createSponsor({
         keys,
         await account(),
         null,
-        sendMessage(keys.account, qorAddress(destination)),
+        sendMessage(
+          keys.account,
+          qorAddress(destination),
+          sender ? SENDER_FUSD : 0n,
+        ),
       ).txBytes,
     );
     // Saved before broadcast, so a crash between the two can be resumed.

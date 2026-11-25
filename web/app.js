@@ -22,6 +22,7 @@ import { seal, stamp, countUp, tick, tilt, stagger } from "./motion.js";
 // Below this balance (0.2 test QOR) a recipient is sent a gas top-up.
 const ENOUGH_GAS = 200000000000000000n;
 let cfg, local, wallet;
+const demoSend = location.pathname === "/try/send";
 const currentPath = location.pathname,
   link = currentPath.startsWith("/c/") ? currentPath.slice(3) : "";
 const invite = (action, body) =>
@@ -65,7 +66,9 @@ function walletBox() {
     );
   return (
     '<div class="wallet"><h3>' +
-    (wallet.saved ? "Unlock your wallet" : "Set up your wallet") +
+    (demoSend
+      ? wallet.saved ? "Unlock the sender wallet" : "Set up a sender wallet"
+      : wallet.saved ? "Unlock your wallet" : "Set up your wallet") +
     '</h3><p class="helper">' +
     (wallet.saved
       ? "Enter the passphrase for this device."
@@ -75,7 +78,7 @@ function walletBox() {
     '-password"></div><button class="primary">' +
     (wallet.saved ? "Unlock wallet" : "Create my wallet") +
     '</button></form><details><summary>More wallet options</summary><div class="field"><label for="restore">Restore an encrypted Clainova backup</label><input id="restore" type="file" accept=".json,application/json"></div>' +
-    (!local ? action("qorex", "Connect QoreX account") : "") +
+    (!local && !demoSend ? action("qorex", "Connect QoreX account") : "") +
     "</details></div>"
   );
 }
@@ -115,7 +118,7 @@ async function signIn(next) {
     ) +
       '<form id="login" class="formstack copy"><div class="field"><label for="pass">Organiser password</label><input id="pass" type="password" required autocomplete="current-password"></div><button class="primary">Sign in</button></form>' +
       (cfg.demo
-        ? '<p class="formnote">No password? <a href="/try">Collect a test payment on Diana</a>.</p>'
+        ? '<p class="formnote">No password? <a href="/try">Try a payment on Diana</a>.</p>'
         : ""),
     "signin",
   );
@@ -126,9 +129,21 @@ async function signIn(next) {
   });
 }
 async function counter() {
-  if (!cfg.session) return signIn(counter);
-  const info = await api("/api/payments");
-  const instructions = local
+  if (!cfg.session && !demoSend) return signIn(counter);
+  if (demoSend) {
+    if (!cfg.demoSend)
+      return main(
+        title("Not available here.", "This server has no public test sends."),
+        "try",
+      );
+    // A reload returns to the payment this browser already sent.
+    const { row } = await api("/api/try/sent", {});
+    if (row && row.state !== "draft") return issued(row);
+  }
+  const info = demoSend ? {} : await api("/api/payments");
+  const instructions = demoSend
+    ? "You are the organiser. This sample number stands in for a real one, and no SMS is sent."
+    : local
     ? "Enter their mobile number. You can try the invitation in the rehearsal inbox."
     : "Enter their mobile number. They’ll get an invitation by SMS after you fund the payment.";
   const steps = `
@@ -176,7 +191,17 @@ async function counter() {
     </div>
     <section class="formside counter-sheet">${steps}</section>
   </div>
-  <div class="strip"><span>${local ? "Rehearsal balance · " + money(info.balance) + " test fUSD" : "QoreChain Diana · ERC-20 test fUSD"}</span><a href="/ledger">View ledger <span aria-hidden="true">↗</span></a></div>`, "counter");
+  <div class="strip"><span>${local ? "Rehearsal balance · " + money(info.balance) + " test fUSD" : "QoreChain Diana · ERC-20 test fUSD"}</span>${demoSend ? '<a href="/try">Back</a>' : '<a href="/ledger">View ledger <span aria-hidden="true">↗</span></a>'}</div>`, "counter");
+  if (demoSend) {
+    el("#phone").value = "800 000 0000";
+    el("#phone").readOnly = true;
+    el("#dial").disabled = true;
+    el("#amount").value = "1";
+    el("#amount").readOnly = true;
+    el("#period").replaceChildren(new Option("7 days", "604800"));
+    el("#slipAmount").textContent = "1";
+    el("#editRecipient").hidden = true;
+  }
   tilt(el(".counter-scene"));
 
   let recipient = "";
@@ -215,8 +240,8 @@ async function counter() {
     }
     clearPhoneError();
     recipient = full;
-    el("#confirmedPhone").textContent = recipient;
-    el("#slipPhone").textContent = recipient;
+    el("#confirmedPhone").textContent = demoSend ? "a sample number" : recipient;
+    el("#slipPhone").textContent = demoSend ? "Sample number" : recipient;
     showAmount(true);
   });
   click("#editRecipient", () => showAmount(false));
@@ -247,7 +272,7 @@ async function counter() {
       modal(
         "Review payment",
         summary([
-          ["To", b.phone],
+          ["To", demoSend ? "Sample number" : b.phone],
           ["Amount", b.amount + " test fUSD"],
           ["Collection period", el("#period").selectedOptions[0].text],
           ...(b.note ? [["Note", b.note]] : []),
@@ -255,9 +280,11 @@ async function counter() {
           '<p class="notice">' +
           (local
             ? "This rehearsal uses a local inbox and test ledger. No SMS is sent."
+            : demoSend
+            ? "Clainova sends your wallet 1 test fUSD and 0.3 test QOR. Your wallet then funds the escrow on Diana itself. Test tokens have no cash value."
             : "The wallet funds escrow before Clainova sends the SMS. A new spending window costs 0.05 test QOR, plus registration if needed and EVM fees.") +
           "</p>" +
-          (!local ? walletBox() + convertChoice() : "") +
+          (!local ? walletBox() + (demoSend ? "" : convertChoice()) : "") +
           (local || wallet.current
             ? action("issue", "Issue payment", true)
             : ""),
@@ -265,6 +292,7 @@ async function counter() {
       bindWallet(review);
       click("#issue", async () => {
         status("Preparing payment…");
+        if (demoSend) return sendDemo(b.note);
         let row = await api("/api/payments", {
           ...b,
           requestKey,
@@ -288,39 +316,86 @@ async function counter() {
     review();
   });
 }
+async function sendDemo(note) {
+  const sender = wallet.current.address;
+  status("Sending test tokens to your wallet…");
+  await api("/api/try/fund", { destination: sender });
+  await wallet.waitForGas(1n);
+  const row = await api("/api/try/send", { sender, note });
+  if (row.state === "draft") {
+    const tx = await wallet.fund(row, true);
+    await api("/api/try/evidence", { id: row.id, hash: tx.hash });
+  }
+  const { row: funded } = await api("/api/try/sent", {});
+  close();
+  await seal(el("#openPocket .press"));
+  issued(funded);
+}
+// Shows the sender the collection as soon as Diana records it.
+function watchCollection(row) {
+  let checks = 0,
+    waits = 0;
+  const timer = setInterval(async () => {
+    if (++checks > 150 || !el(".issued")) return clearInterval(timer);
+    try {
+      const { row: latest } = await api("/api/try/sent", {});
+      // The receipt follows the collection by a few seconds.
+      const settled = latest.evidence?.collection || ++waits > 8;
+      if (latest.state !== row.state && settled) {
+        clearInterval(timer);
+        issued(latest);
+      }
+    } catch {
+      // The next check tries again.
+    }
+  }, 5000);
+}
 function issued(row) {
+  const done = row.state === "collected";
   // Funding, delivery and collection are separate events; show each truthfully.
-  const sent = row.delivery && row.delivery !== "unsent";
+  const sent = row.demo || (row.delivery && row.delivery !== "unsent");
   const steps = [
     [
       true,
       local ? "Funds reserved" : "Escrow funded",
       money(row.amount) +
         " test fUSD " +
-        (local ? "on the rehearsal ledger" : "held by ClainovaClaims"),
+        (local
+          ? "on the rehearsal ledger"
+          : done
+            ? "was held by ClainovaClaims"
+            : "held by ClainovaClaims"),
     ],
     [
       sent,
       sent
-        ? local
+        ? local || row.demo
           ? "Invitation ready"
           : "Invitation sent"
         : "Invitation not sent yet",
       sent
-        ? local
+        ? row.demo
+          ? "A real recipient gets this by SMS"
+          : local
           ? "In the rehearsal inbox"
           : row.delivery[0].toUpperCase() + row.delivery.slice(1)
         : "Send it again from the ledger",
     ],
-    [false, "Waiting for collection", row.mask + " · by " + date(row.expiry)],
+    done
+      ? [true, "Collected", "By wallet " + short(row.destination)]
+      : [false, "Waiting for collection", row.mask + " · by " + date(row.expiry)],
   ];
   const current = steps.findIndex(([done]) => !done);
   main(
     `<div class="issued">
       <section class="issued-copy">
         <p class="eyebrow">Sealed · Ref ${esc(row.id.slice(2, 10).toUpperCase())}</p>
-        <div class="intro"><h1>Payment issued.</h1><p>${
-          local
+        <div class="intro"><h1>${done ? "Payment collected." : "Payment issued."}</h1><p>${
+          row.demo
+            ? done
+              ? "The recipient’s own wallet collected it from the escrow on Diana."
+              : "Now be the recipient. Open the invitation and collect it into a second wallet. This page updates when you do."
+            : local
             ? "Your invitation is ready in the rehearsal inbox."
             : "Invitation " + esc(row.delivery) + "."
         }</p></div>
@@ -331,16 +406,53 @@ function issued(row) {
           )
           .join("")}</ol>
         <div class="actions">${
-          local
+          row.demo
+            ? (done ? "" : '<a class="button" target="_blank" href="/c/' + esc(row.link) + '">Open the invitation <span class="arrow" aria-hidden="true">→</span></a>')
+            : local
             ? '<a class="button" href="/c/' + esc(row.link) + '">Open recipient inbox <span class="arrow" aria-hidden="true">→</span></a>'
             : ""
-        }<a class="secondary" href="/ledger">View ledger</a></div>
+        }${row.demo ? "" : '<a class="secondary" href="/ledger">View ledger</a>'}</div>
+        ${row.demo ? proof(row) : ""}
       </section>
       ${receipt(row)}
     </div>`,
     "issued",
   );
   stagger([...document.querySelectorAll(".timeline li")]);
+  if (row.demo && !done) watchCollection(row);
+}
+// The public transactions behind a demo payment. The explorer opens on mainnet,
+// so the official testnet API is linked as well.
+function proof(row) {
+  const items = [
+    ["Funded", row.evidence?.funding],
+    ["Collected", row.evidence?.collection],
+  ].filter(([, fact]) => fact);
+  if (!items.length) return "";
+  const anchor = (href, text) =>
+    '<a target="_blank" rel="noreferrer" href="' + esc(href) + '">' + text + "</a>";
+  return (
+    items
+      .map(
+        ([name, fact]) =>
+          '<p class="formnote">' +
+          name +
+          " in block " +
+          Number(fact.block).toLocaleString("en") +
+          (fact.native
+            ? " · " +
+              anchor("https://explore.qore.network/tx/" + fact.native, "Explorer") +
+              " · " +
+              anchor(
+                "https://api-testnet.qore.host/cosmos/tx/v1beta1/txs/" + fact.native,
+                "Raw transaction",
+              )
+            : "") +
+          "</p>",
+      )
+      .join("") +
+    '<p class="formnote">Switch the explorer to Testnet to see them.</p>'
+  );
 }
 async function ledger() {
   if (!cfg.session) return signIn(ledger);
@@ -776,11 +888,16 @@ function tryDemo() {
     );
   main(
     title(
-      "Collect a test payment.",
-      "1 test fUSD is waiting in the escrow on Diana. Take it into a new wallet made in your browser, then send it on. You need no phone, no extension and no QOR.",
+      "Try Clainova on Diana.",
+      cfg.demoSend
+        ? "Send a payment as the organiser, then collect it as the recipient. You need no phone, no extension and no QOR."
+        : "1 test fUSD is waiting in the escrow on Diana. You need no phone, no extension and no QOR.",
     ) +
-      '<div class="copy"><p>A normal recipient gets a code by SMS. Here the code is shown on the page. Test tokens have no cash value.</p><div class="actions">' +
-      action("take", "Take a test payment", true) +
+      '<div class="copy"><p>Every step is a real transaction on the testnet. A normal recipient gets a code by SMS. Here the code is shown on the page. Test tokens have no cash value.</p><div class="actions">' +
+      (cfg.demoSend
+        ? '<a class="button" href="/try/send">Send, then collect <span class="arrow" aria-hidden="true">→</span></a>'
+        : "") +
+      action("take", cfg.demoSend ? "Only collect" : "Take a test payment", !cfg.demoSend) +
       "</div></div>",
     "try",
   );
@@ -809,9 +926,9 @@ function legal() {
 async function start() {
   cfg = await api("/api/config");
   local = cfg.mode === "rehearsal";
-  wallet = lazyWallet(cfg, api, status);
+  wallet = lazyWallet(cfg, api, status, demoSend ? ".sender" : "");
   // Fetched once the page has been drawn, before anyone needs it.
-  if (link || currentPath === "/try" || cfg.session) setTimeout(wallet.preload, 400);
+  if (link || currentPath.startsWith("/try") || cfg.session) setTimeout(wallet.preload, 400);
   el("#network").textContent = local ? "Local rehearsal" : "Diana testnet";
   const nav =
     currentPath === "/"
@@ -822,7 +939,7 @@ async function start() {
   if (nav) el(nav).setAttribute("aria-current", "page");
   // A testnet recipient has no organiser session, so the organiser menu
   // would only lead to a sign-in page. Rehearsal keeps it for the demo.
-  if ((link || currentPath === "/try") && !local) el(".bar nav").hidden = true;
+  if ((link || currentPath.startsWith("/try")) && !local) el(".bar nav").hidden = true;
   if (currentPath === "/try") return tryDemo();
   if (link) return collect();
   if (currentPath === "/ledger") return ledger();

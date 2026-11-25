@@ -1,10 +1,10 @@
 // Key generation, signatures and chain access are most of the bundle. This
 // stands in for the wallet until that code has loaded, so a page appears first.
-export function lazyWallet(cfg, api, progress) {
+export function lazyWallet(cfg, api, progress, slot = "") {
   let real, job;
   function load() {
     job ||= import("./wallet.js").then(
-      (module) => (real = module.walletTools(cfg, api, progress)),
+      (module) => (real = module.walletTools(cfg, api, progress, slot)),
       () => {
         job = null;
         throw Error("The wallet could not load. Check your connection and retry.");
@@ -21,7 +21,7 @@ export function lazyWallet(cfg, api, progress) {
         if (key === "current") return undefined;
         if (key === "external") return false;
         if (key === "saved")
-          return !!localStorage.getItem("clainova.keystore." + cfg.mode);
+          return !!localStorage.getItem("clainova.keystore." + cfg.mode + slot);
         return async (...args) => (await load())[key](...args);
       },
     },
