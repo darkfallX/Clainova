@@ -199,6 +199,8 @@ try {
   await page.getByLabel("Verification code", { exact: true }).fill(code);
   await hold();
   await page.getByRole("button", { name: "Verify code", exact: true }).click();
+  // The grant must have arrived before a reload can be expected to keep it.
+  await page.getByText(/^Number verified/).waitFor();
   await page.reload();
   await page.getByLabel("Wallet passphrase").waitFor();
   const password = randomBytes(16).toString("hex");
