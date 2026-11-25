@@ -23,8 +23,21 @@ function check(ok, text) {
   ok ? passed++ : failed++;
   console.log((ok ? "ok    " : "FAIL  ") + text);
 }
+// A slow or flaky connection should not end the check halfway: retry each
+// network read a few times before giving up.
+async function retry(read, tries = 4) {
+  for (let i = 1; ; i++) {
+    try {
+      return await read();
+    } catch (err) {
+      if (i >= tries) throw err;
+      console.log("      network busy, retrying (" + i + "/" + (tries - 1) + ")");
+      await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
+}
 async function evm(hash) {
-  const receipt = await rpc.getTransactionReceipt(hash);
+  const receipt = await retry(() => rpc.getTransactionReceipt(hash));
   check(receipt?.status === 1, "succeeded " + hash);
   return receipt;
 }
@@ -36,8 +49,12 @@ function escrowEvent(receipt, name, id) {
   }
 }
 async function native(hash, type, account) {
-  const res = await fetch(REST + "/cosmos/tx/v1beta1/txs/" + hash);
-  const { tx, tx_response: out } = await res.json();
+  const { tx, tx_response: out } = await retry(async () => {
+    const res = await fetch(REST + "/cosmos/tx/v1beta1/txs/" + hash, {
+      signal: AbortSignal.timeout(20000),
+    });
+    return res.json();
+  });
   const message = tx?.body.messages[0];
   check(
     Number(out?.code) === 0 &&
