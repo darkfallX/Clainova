@@ -1637,3 +1637,31 @@ dialog[open]::backdrop {
 .edit-recipient[hidden] {
   display: none;
 }
+
+/* Answers from the chain's post-quantum checks */
+.pq dd {
+  font-weight: 600;
+}
+.pq-ok {
+  color: #235a4e;
+}
+.pq-bad {
+  color: #a3261b;
+}
+.welcome-actions {
+  display: grid;
+  gap: 12px;
+}
+.welcome-actions a {
+  justify-content: center;
+  text-align: center;
+}
+#pq:not(:empty) {
+  margin-top: 32px;
+}
+.pq + .helper {
+  margin-top: 14px;
+}
+.issued:has(.pq) {
+  align-items: start;
+}

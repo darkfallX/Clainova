@@ -185,7 +185,7 @@ async function handle(req, res) {
       /^\/c\/[\da-f]{64}\.[\da-f]{64}$/.test(pathname);
     // Split bundles have hashed names that change with every build.
     const chunk =
-      /^\/(wallet|chunk)-[A-Z0-9]{8}\.js$/.test(pathname) &&
+      /^\/(wallet|chunk|proof)-[A-Z0-9]{8}\.js$/.test(pathname) &&
       fs.existsSync(path.join("dist", pathname));
     requireThat(
       page || chunk || Object.hasOwn(staticFiles, pathname),

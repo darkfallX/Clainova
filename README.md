@@ -1,6 +1,27 @@
 # Clainova
 
-**Pay someone by phone number, before they have a wallet.** An organiser funds a payment for a phone number. The recipient opens a private invitation, verifies the number, creates an encrypted wallet and collects test fUSD into an account with an ML-DSA-87 key. An expired payment can be refunded to the sender. The running example is a community organiser paying a workshop speaker.
+**Pay someone by phone number, before they have a wallet.** An organiser funds a payment. It waits in escrow on QoreChain until that person verifies a code and collects it into a new wallet with an ML-DSA-87 key. If nobody collects, the sender can get it back.
+
+| Five new wallets each, no QOR, 25 November 2026, Diana | Could spend the money |
+|---|---|
+| Paid through Clainova | **5 of 5** |
+| Sent the same token directly | **0 of 5** |
+
+The chain refused the direct ones with `account has no PQC key`, and they held no QOR to register one. They could get QOR from the faucet, which needs its own sign-in. Clainova's five needed nothing else. The fastest collected in 27 seconds. [Every transaction and answer](submission/live-check.json) · [the script](scripts/live-check.mjs)
+
+**11 of 11 attacks were refused**, by Diana or by the server: a stolen link without the code, a guessed code, one changed bit in the signature, another registered wallet using the real signature, a wallet with no key, a second wallet for the same payment, an early refund, a second collection, and a leaked classical key trying an EVM transfer, a new window and a native transfer.
+
+**You can ask the chain yourself.** On every collected payment, your own browser asks QoreChain's `pqcVerify` and `pqcKeyStatus` live. The real signature is accepted. The same signature with one bit changed, for another wallet, or for a wallet without a proven key is refused.
+
+Closest alternative: a claim link. Whoever holds the link can collect it. Here a link without the phone's code is refused.
+
+## Why it matters
+
+| What happened | Would Clainova have helped? |
+|---|---|
+| 20 December 2025: someone copied a lookalike address from their history and lost [49,999,950 USDT](https://finance.yahoo.com/news/crypto-user-loses-50-million-174321722.html). | **Reduced.** The organiser pays a number and never handles an address, so there is nothing to copy. It doesn't help later, when the recipient pastes an address to send onwards. |
+| July 2022 to June 2024: Carnegie Mellon counted about 270 million of these attempts, 17 million targets and at least [$83.8 million lost](https://cylab.cmu.edu/news/2026/01/07-blockchain-address-poisoning.html) on Ethereum and BNB Smart Chain. | **Reduced**, for the same first payment. |
+| March 2026: Nigeria's regulator called recycled and swapped numbers a significant route for [fraud and identity theft](https://nairametrics.com/2026/03/27/ncc-to-introduce-platform-to-curb-sim-related-fraud/). | **Not helped, and exposed to it.** Someone who takes over the number before collection can collect. Payments expire and are small test amounts. |
 
 ## Check it on Diana
 
@@ -22,7 +43,7 @@ The script is read-only, needs no keys and runs 76 checks against Diana.
 | Collected by the recipient | `0x9b01ecbeed92c1c4e3044add83d89f18d8899ae7d7e30e6d18152a2423bddd83` |
 | Recipient's own spend | `0x033c9842f0abdfd5087ae714ab5a1fd336e7c220146ce17d23839e0b50340ab3` |
 
-Five more payments on the same escrow cover a page closed right after the claim was broadcast, a refund triggered by a different account, two collections through the public demo page on an emulated slow phone, and one whose invitation and code went through the Africa’s Talking sandbox to its simulated handset. [All transactions](submission/diana-run.json)
+Five more payments cover a page closed right after the claim was broadcast, a refund triggered by a different account, two collections through the public demo on an emulated slow phone, and one whose invitation and code went through the SMS provider's test handset. [All transactions](submission/diana-run.json)
 
 These were **team runs**. The team operated every wallet, and no code came from a carrier. Delivery to a real handset and use by someone outside the team are still to be shown.
 
@@ -37,7 +58,7 @@ The code appears on the page instead of going to a phone, and the page says so. 
 
 **Delivery status, 25 November 2026.** ClainovaClaims v2 is deployed on Diana at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6`. It returned the expected festival fUSD address and ML-DSA-87 verifier key. v2 adds a reentrancy guard and checked token calls after QCAI audit round 1. The first deployment, `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`, stays on-chain unchanged and is no longer used. [v2 receipts](submission/diana-deployment-v2.json) · [v1 receipts](submission/diana-deployment.json) · [Audit and PQ design](docs/AUDIT.md) · [Security review](docs/security-review.md)
 
-Africa’s Talking accepted a test SMS with the sandbox credentials configured for Clainova. The builder opened the simulator inbox and confirmed receipt. The demo video shows the local rehearsal. Both QCAI audit stages are complete: 65/100 with six findings on v1, then 85/100 with four on v2, none needing a contract change. The reports and the response to each finding are in [docs/AUDIT.md](docs/AUDIT.md). Carrier delivery to a handset is pending.
+Both QCAI audit stages are complete: 65/100 with six findings on v1, then 85/100 with four on v2, none needing a contract change. The reports and the response to each finding are in [docs/AUDIT.md](docs/AUDIT.md). Carrier delivery to a handset is pending.
 
 [Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 

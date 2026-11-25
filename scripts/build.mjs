@@ -17,7 +17,7 @@ fs.copyFileSync(
   "dist/outfit.woff2",
 );
 for (const file of fs.readdirSync("dist"))
-  if (/^(wallet|chunk)-[A-Z0-9]{8}\.js$/.test(file)) fs.rmSync("dist/" + file);
+  if (/^(wallet|chunk|proof)-[A-Z0-9]{8}\.js$/.test(file)) fs.rmSync("dist/" + file);
 await build({
   entryPoints: ["web/app.js", "web/keystore-worker.js"],
   outdir: "dist",

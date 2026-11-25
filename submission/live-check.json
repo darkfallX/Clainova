@@ -1,0 +1,183 @@
+{
+  "network": "qorechain-diana",
+  "date": "2026-11-25T21:19:46.472Z",
+  "escrow": "0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6",
+  "clainova": [
+    {
+      "wallet": "0xa44DeaC533229844d74E03c57E7e49DdfE1a8908",
+      "accountBefore": "no prior account record",
+      "qorBefore": "0",
+      "collected": "0x9707fe4ec4c7ccf58d8f162e74f1286012c69d22d59db0759aa3b00e3f1d5466",
+      "collectedInSeconds": 43,
+      "spent": "0x35d1a3aa6ea3924905eff60ed7d930fa43986c5c62d0cc2189be4b994ddae685"
+    },
+    {
+      "wallet": "0xd08Dc2E3bFfd8782B53D929d908aFd90c19cB936",
+      "accountBefore": "no prior account record",
+      "qorBefore": "0",
+      "collected": "0xd697fe13d12a8dd1de2df92ebaa5b6a736f6d2cd18f82a420254f0effa65db3a",
+      "collectedInSeconds": 77,
+      "spent": "0x149efd29912247238568b793b8317f4507bf5c4fdffda6ad5976fc73b5ac56fb"
+    },
+    {
+      "wallet": "0x4a4efF09204e50Ab5C2b24FF2d20F6c1A6aAe838",
+      "accountBefore": "no prior account record",
+      "qorBefore": "0",
+      "collected": "0x6a203a7f131eb9de317757ec4060044d6276cb9387adbec4fc1f59b729f2c48f",
+      "collectedInSeconds": 30,
+      "spent": "0xb8db4c07147e670dd0d5effa677cb4a39d751201f5f514e1dd017757bd8600cd"
+    },
+    {
+      "wallet": "0x031D87BEC8ac0356f5D086950358A67B29D86eA7",
+      "accountBefore": "no prior account record",
+      "qorBefore": "0",
+      "collected": "0x4c1bc5ed8dfe1f0e03da8093cfe0cc13ead8ea6c38785d5ad7918708e65f84aa",
+      "collectedInSeconds": 31,
+      "spent": "0xc193c9ceb0cd19a24b561b7dd5356e52ca0f2012898baca27156080d57eb2e19"
+    },
+    {
+      "wallet": "0x21c51c4F08A6d8e361cb8d62030571cAfd340DF4",
+      "accountBefore": "no prior account record",
+      "qorBefore": "0",
+      "collected": "0xe05df1a1fcccb67c12b8e36e5682ba75b084e045eaa8d3e27a6c649a57a61cfa",
+      "collectedInSeconds": 27,
+      "spent": "0x3340b41e8675c72a9070dec8061875897b9c3b448907201bd4661b11211a476d"
+    }
+  ],
+  "direct": [
+    {
+      "wallet": "0xba43822A8995070B4B59feBE354E855D87e2Bda1",
+      "received": "EC1F405FFE5308BEAE1F648915EB79B1B6F96D0D0AB6613515B53843E69AA702",
+      "couldSpend": false,
+      "tries": {
+        "send it on": {
+          "ok": false,
+          "answer": "code 8: account has no PQC key and classical fallback is disabled: classical fallback not allowed"
+        },
+        "register a key first": {
+          "ok": false,
+          "answer": "code 5: spendable balance 0uqor is smaller than 50000uqor: insufficient funds: insufficient funds"
+        }
+      }
+    },
+    {
+      "wallet": "0x7E6ae8F16CC57602a70D196Ea064F7cdc55bf034",
+      "received": "AA87EAEA184C8F195D328981E2EDDC4E63C331846D7130CE5C7F4F3151F631BA",
+      "couldSpend": false,
+      "tries": {
+        "send it on": {
+          "ok": false,
+          "answer": "code 8: account has no PQC key and classical fallback is disabled: classical fallback not allowed"
+        },
+        "register a key first": {
+          "ok": false,
+          "answer": "code 5: spendable balance 0uqor is smaller than 50000uqor: insufficient funds: insufficient funds"
+        }
+      }
+    },
+    {
+      "wallet": "0xE3368B221a4bCE7f3c2021C48a78E349040eCe8E",
+      "received": "E6C63E0D7C9F9FB7E1DA5C04E6ED85045E20CDE0A95BF0BE2B757DCBF5C13D99",
+      "couldSpend": false,
+      "tries": {
+        "send it on": {
+          "ok": false,
+          "answer": "code 8: account has no PQC key and classical fallback is disabled: classical fallback not allowed"
+        },
+        "register a key first": {
+          "ok": false,
+          "answer": "code 5: spendable balance 0uqor is smaller than 50000uqor: insufficient funds: insufficient funds"
+        }
+      }
+    },
+    {
+      "wallet": "0x64354db296b4F5322eE18A901DCc4cB53AAB0201",
+      "received": "F4FDDC6908194FAA82F02767D140EEF8E99492B379FBE44297E6CC474C81CE00",
+      "couldSpend": false,
+      "tries": {
+        "send it on": {
+          "ok": false,
+          "answer": "code 8: account has no PQC key and classical fallback is disabled: classical fallback not allowed"
+        },
+        "register a key first": {
+          "ok": false,
+          "answer": "code 5: spendable balance 0uqor is smaller than 50000uqor: insufficient funds: insufficient funds"
+        }
+      }
+    },
+    {
+      "wallet": "0x5Ac5C04aDd5a9e01cF166C99Bb8601abE9d64a67",
+      "received": "7C53F01D7CD246B7E920C53E410B291BDBA1292978371325C2296D9525E24E30",
+      "couldSpend": false,
+      "tries": {
+        "send it on": {
+          "ok": false,
+          "answer": "code 8: account has no PQC key and classical fallback is disabled: classical fallback not allowed"
+        },
+        "register a key first": {
+          "ok": false,
+          "answer": "code 5: spendable balance 0uqor is smaller than 50000uqor: insufficient funds: insufficient funds"
+        }
+      }
+    }
+  ],
+  "attacks": [
+    {
+      "name": "Stolen link, no code: ask for the signature",
+      "refused": true,
+      "answer": "Verify your number again."
+    },
+    {
+      "name": "Stolen link, guessed code",
+      "refused": true,
+      "answer": "That code is incorrect."
+    },
+    {
+      "name": "Right wallet, but no ML-DSA-87 key registered",
+      "refused": true,
+      "answer": "Register a possession-proven ML-DSA key"
+    },
+    {
+      "name": "Signature with one bit changed",
+      "refused": true,
+      "answer": "Invalid attestation"
+    },
+    {
+      "name": "Someone else's wallet, with a proven key, using the real signature",
+      "refused": true,
+      "answer": "Invalid attestation"
+    },
+    {
+      "name": "Ask the server to pay a second wallet",
+      "refused": true,
+      "answer": "This invitation is already bound to another wallet."
+    },
+    {
+      "name": "Refund before the deadline",
+      "refused": true,
+      "answer": "Refund unavailable"
+    },
+    {
+      "name": "Collect the same payment twice",
+      "refused": true,
+      "answer": "Payment closed"
+    },
+    {
+      "name": "Leaked classical key: EVM transfer with no window open",
+      "refused": true,
+      "answer": "failed to broadcast transaction: the EVM authorisation window for qor16zxu9callkrc9dfaj2wepzhajrqeewfkrekfmc does not admit this transaction: the window does no"
+    },
+    {
+      "name": "Leaked classical key: open a window without the ML-DSA-87 signature",
+      "refused": true,
+      "answer": "code 20: account qor16zxu9callkrc9dfaj2wepzhajrqeewfkrekfmc has a registered PQC key and must include the hybrid signature extension (hybrid mode: required): hy"
+    },
+    {
+      "name": "Leaked classical key: native transfer without the ML-DSA-87 signature",
+      "refused": true,
+      "answer": "code 20: account qor16zxu9callkrc9dfaj2wepzhajrqeewfkrekfmc has a registered PQC key and must include the hybrid signature extension (hybrid mode: required): hy"
+    }
+  ],
+  "headline": "5 of 5 new wallets collected and spent through Clainova. 0 of 5 could spend the same token sent to them directly.",
+  "attacksRefused": "11 of 11"
+}

@@ -18,7 +18,9 @@ Stage 2 reviewed the exact v2 source (SHA-256 `8e428a194ac9287030b3411b0624a6321
 | Scoped EVM window, hybrid-signed | `web/native.js`, before every EVM call from the built-in wallet | A leaked classical key alone cannot call the escrow. The window allows one call (two when funding needs an approval), only to the required contracts, for 120 blocks. | "new coin-60 wallet signs a registration and a target-limited hybrid window offline", "a retry reuses an untouched window for the same target and never any other" |
 | Hybrid-signed native transfer | `server/sponsor.mjs` | Paying gas needs no open EVM window, so the sponsor's classical key alone cannot spend while no window is open. | "the sponsor sends one hybrid-signed native grant and repeats return the same payment" |
 
-The Hardhat tests use doubles for the two precompiles. A valid claim also ran against the real precompiles on Diana on 25 November 2026. `node scripts/verify-run.mjs` re-checks those transactions. [Recorded run](../submission/diana-run.json)
+The Hardhat tests use doubles for the two precompiles. Valid claims also ran against the real precompiles on Diana on 25 November 2026. `node scripts/verify-run.mjs` re-checks those transactions. [Recorded run](../submission/diana-run.json) `scripts/live-check.mjs` attacked a funded payment on Diana: a changed bit, another registered wallet and an unregistered wallet were refused by `claim`, and a leaked classical key was refused by the chain for an EVM transfer, a new window and a native transfer. [Answers](../submission/live-check.json) The app repeats the precompile calls live on every collected payment (`web/proof.js`).
+
+**Design limit.** `claim` checks the verifier's ML-DSA-87 signature and the recipient's key status. It does not check a signature by the recipient's own key. That key protects the window without which the recipient cannot call `claim`.
 
 **Trust limit.** One verifier key decides which wallet belongs to a phone number. A compromised verifier seed could authorise the wrong wallet for a payment that is still funded. See the [security review](security-review.md).
 

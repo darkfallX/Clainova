@@ -51,7 +51,7 @@ export function convertFusd(account, recipient, token, amount) {
     .finish();
   return { typeUrl: "/cosmos.evm.erc20.v1.MsgConvertCoin", value };
 }
-export function signedNative(keys, info, targets, conversion) {
+export function signedNative(keys, info, targets, conversion, mode) {
   const { account, classicalKey, pqKey } = keys;
   const gasLimit =
     {
@@ -103,7 +103,7 @@ export function signedNative(keys, info, targets, conversion) {
     authInfoBytes,
     classicalKey,
     pqKey,
-    mode: targets || conversion ? "hybrid" : "classicalOnly",
+    mode: mode || (targets || conversion ? "hybrid" : "classicalOnly"),
     signBytesVersion: "v2",
   });
 }

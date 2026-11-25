@@ -128,8 +128,78 @@ async function signIn(next) {
     await next();
   });
 }
+// What a visitor without an organiser session sees first.
+function welcome() {
+  el(".bar nav").hidden = true;
+  main(
+    `<div class="counter-home">
+    <div class="counter-scene"><div class="closed-pocket">
+      <p class="scene-title">Pay by phone<span>.</span></p>
+      <div class="envelope"><img src="/pocket-fold.webp" alt="" width="1152" height="768" fetchpriority="high"></div>
+    </div></div>
+    <section class="formside counter-sheet">
+      ${title(
+        "The wallet can come later.",
+        "An organiser pays a phone number. The money waits in escrow on QoreChain until that person verifies a code and collects it into a new wallet with a post-quantum key. If nobody collects, the sender can get it back.",
+      )}
+      <div class="actions welcome-actions">
+        ${cfg.demoSend ? '<a class="button wide" href="/try/send">Try both sides on Diana <span class="arrow" aria-hidden="true">→</span></a>' : ""}
+        <a class="${cfg.demoSend ? "secondary" : "button"} wide" href="/try">${cfg.demoSend ? "More ways to try it" : "Try it on Diana"}</a>
+      </div>
+      <p class="formnote">About two minutes. Real testnet transactions, test money. You need no password, phone or QOR.</p>
+    </section>
+  </div>
+  <div class="strip"><span>Open the link in your message to collect a payment sent to you.</span><button type="button" id="organiser" class="secondary quiet">Organiser sign-in</button></div>`,
+    "welcome",
+  );
+  tilt(el(".counter-scene"));
+  click("#organiser", async () => {
+    el(".bar nav").hidden = false;
+    await signIn(counter);
+  });
+}
+// QoreChain's own post-quantum checks on a collected payment, asked live from
+// this browser. Failing to load never hides the receipt.
+async function postQuantum(row) {
+  const box = el("#pq");
+  const hash = row.evidence?.collection?.hash;
+  if (!box || local || !hash) return;
+  box.innerHTML =
+    '<div class="step"><h3>Asked QoreChain just now</h3><p class="helper" id="pqNote">Your browser is checking this payment on Diana…</p></div>';
+  try {
+    const { askDiana } = await import("./proof.js");
+    const { rows, block } = await askDiana(cfg, api, hash);
+    box.innerHTML =
+      '<div class="step"><h3>Asked QoreChain just now</h3>' +
+      '<dl class="summary pq">' +
+      rows
+        .map(
+          ([question, answer, expected]) =>
+            "<div><dt>" +
+            esc(question) +
+            '</dt><dd class="' +
+            (expected ? "pq-ok" : "pq-bad") +
+            '">' +
+            esc(answer) +
+            "</dd></div>",
+        )
+        .join("") +
+      '</dl><p class="helper">Read by your browser from Diana at block ' +
+      Number(block).toLocaleString("en") +
+      ", using the ML-DSA-87 precompiles pqcVerify (0x0a01) and pqcKeyStatus (0x0a02).</p>" +
+      '<div class="actions">' +
+      action("pqAgain", "Ask again") +
+      "</div></div>";
+  } catch {
+    box.innerHTML =
+      '<div class="step"><h3>Ask QoreChain</h3><p class="helper">Diana did not answer. The receipt above is not affected.</p><div class="actions">' +
+      action("pqAgain", "Try again") +
+      "</div></div>";
+  }
+  click("#pqAgain", () => postQuantum(row));
+}
 async function counter() {
-  if (!cfg.session && !demoSend) return signIn(counter);
+  if (!cfg.session && !demoSend) return cfg.demo ? welcome() : signIn(counter);
   if (demoSend) {
     if (!cfg.demoSend)
       return main(
@@ -413,6 +483,7 @@ function issued(row) {
             : ""
         }${row.demo ? "" : '<a class="secondary" href="/ledger">View ledger</a>'}</div>
         ${row.demo ? proof(row) : ""}
+        <div id="pq"></div>
       </section>
       ${receipt(row)}
     </div>`,
@@ -420,6 +491,7 @@ function issued(row) {
   );
   stagger([...document.querySelectorAll(".timeline li")]);
   if (row.demo && !done) watchCollection(row);
+  if (done) postQuantum(row);
 }
 // The public transactions behind a demo payment. The explorer opens on mainnet,
 // so the official testnet API is linked as well.
@@ -699,7 +771,7 @@ async function collect() {
               ],
             ]) +
             walletBox() +
-            '<div id="follow"></div>',
+            '<div id="follow"></div><div id="pq"></div>',
           receipt(r),
         ),
       "collected",
@@ -709,6 +781,7 @@ async function collect() {
       stamp(el(".press"));
     }
     bindWallet(collect);
+    postQuantum(r);
     if (wallet.current?.address === r.destination) {
       const balance = await wallet.balance();
       el("#follow").innerHTML =
@@ -888,12 +961,12 @@ function tryDemo() {
     );
   main(
     title(
-      "Try Clainova on Diana.",
+      "Try Clainova on QoreChain.",
       cfg.demoSend
         ? "Send a payment as the organiser, then collect it as the recipient. You need no phone, no extension and no QOR."
         : "1 test fUSD is waiting in the escrow on Diana. You need no phone, no extension and no QOR.",
     ) +
-      '<div class="copy"><p>Every step is a real transaction on the testnet. A normal recipient gets a code by SMS. Here the code is shown on the page. Test tokens have no cash value.</p><div class="actions">' +
+      '<div class="copy"><p>Every step is a real transaction on Diana, QoreChain’s testnet, and at the end your browser asks the chain’s post-quantum checks itself. A normal recipient gets a code by SMS. Here the code is shown on the page. Test tokens have no cash value.</p><div class="actions">' +
       (cfg.demoSend
         ? '<a class="button" href="/try/send">Send, then collect <span class="arrow" aria-hidden="true">→</span></a>'
         : "") +
