@@ -22,7 +22,7 @@ Solidity 0.8.28, Hardhat. ClainovaClaims v2 (`0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F
 
 The wallet is created in the browser and encrypted with the recipient's passphrase. Each EVM call runs inside a hybrid-signed window with one call (two when funding needs an approval), only to the required contracts, for 120 blocks. A sponsor pays the first fees with a hybrid-signed native transfer, so that needs no EVM window.
 
-Node 22 and SQLite store the invitations. Phone numbers are encrypted. QCAI audit reports and post-quantum design: docs/audit/ and docs/AUDIT.md in the repository.
+Node 22 and SQLite store the invitations. Phone numbers are encrypted. Two-stage QCAI audit: 65 with six findings on v1, then 85 with four on v2, each answered with a fix, a test or a reason. Reports and post-quantum design: docs/audit/ and docs/AUDIT.md in the repository.
 
 ## Boxes to change
 

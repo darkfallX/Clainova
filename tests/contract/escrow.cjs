@@ -171,6 +171,43 @@ describe("Clainova escrow", function () {
     await (await escrow.connect(recipient).claim(pid, deadline, sig)).wait();
     assert.equal(await evil.balanceOf(recipient.address), 50n);
   });
+  it("has no way to change the verifier key, upgrade or delegate", async () => {
+    const { abi, evm } = artifacts.ClainovaClaims;
+    const writes = abi
+      .filter((x) => x.type === "function" && !["view", "pure"].includes(x.stateMutability))
+      .map((x) => x.name)
+      .sort();
+    assert.deepEqual(writes, ["claim", "fund", "refund"]);
+    // Walks real opcodes, skipping pushed data and the metadata trailer.
+    const code = E.getBytes("0x" + evm.deployedBytecode.object);
+    const end = code.length - 2 - (code.at(-2) * 256 + code.at(-1));
+    for (let i = 0; i < end; i++) {
+      const op = code[i];
+      assert.ok(![0xf2, 0xf4, 0xff].includes(op), "unexpected opcode at " + i);
+      if (op >= 0x60 && op <= 0x7f) i += op - 0x5f;
+    }
+    const key = await contract.verifierKey();
+    await (await collect()).wait();
+    assert.equal(await contract.verifierKey(), key);
+  });
+  it("accepts an expiry of exactly 30 days and rejects past, longer and maximum values", async () => {
+    const at = (await rpc.getBlock("latest")).timestamp + 100;
+    const next = () =>
+      hre.network.provider.send("evm_setNextBlockTimestamp", [at]);
+    const max = 30 * 86400;
+    const attempt = async (expiry) => {
+      await next();
+      return contract.fund.staticCall(E.toBeHex(5000, 32), 1, expiry, {
+        blockTag: "pending",
+      });
+    };
+    for (const bad of [at - 1, at, at + max + 1, 2n ** 64n - 1n])
+      await assert.rejects(attempt(bad), /Invalid payment/);
+    await attempt(at + 1);
+    await next();
+    await (await contract.fund(E.toBeHex(5000, 32), 1, at + max)).wait();
+    assert.equal(await token.balanceOf(contract.target), 20000001n);
+  });
   it("preserves escrow balances on duplicate and failed deposits", async () => {
     await assert.rejects(contract.fund(seed, 1, deadline));
     const next = E.toBeHex(999, 32);
