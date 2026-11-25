@@ -46,3 +46,4 @@ Read from the official pages on 25 November 2026. [Rules](https://build.qorechai
 |---|---|---|
 | 25 Nov 2026, 22:00 Lagos | Fix first | First screen was a password page, the post-quantum checks were invisible, no baseline, no dated incident |
 | 25 Nov 2026, after fixes | Fix first | Those four are fixed and seen working on the public link. Still missing: video, permanent host, real SMS, outside users |
+| 25 Nov 2026, 23:45 Lagos, core only (host and video set aside) | Fix first | Re-checked from outside: 10 of 10 baseline transactions and 76 of 76 recorded checks pass on Diana; the escrow shows 32 funded, 19 collected, 1 refunded; 29 unit and 11 contract tests pass; 0 scanner alarms. The read-only check crashed on a slow connection, now retries. Still unproven: SMS reaching a real handset, anyone outside the team. Closest rivals have far more tests (Postmark 126, Haven Escrow 111) and Postmark uses a 2-of-3 verifier quorum where we use one verifier |
