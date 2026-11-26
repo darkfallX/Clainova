@@ -6,3 +6,11 @@ artifacts/
 cache/
 test-results/
 *.log
+
+# Notes for the team only, kept on this PC
+.claude/
+HACKATHON.md
+Clainova-CONCEPT.md
+docs/festival.md
+submission/festival-entry.md
+submission/post-collected.png
