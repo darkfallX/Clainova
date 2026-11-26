@@ -4,11 +4,15 @@ import africastalking from "africastalking";
 import { requireThat } from "./common.mjs";
 
 // Delivery channel for invitations and codes. "africastalking" sends SMS (its
-// "sandbox" username only reaches a simulator). "outbox" appends messages to a
-// private file on the server for team runs. It never reaches a phone, so it is
-// refused for the field cohort.
-export function smsChannel(env, folder) {
+// "sandbox" username only reaches a simulator). "android" sends a real SMS from
+// the organiser's own Android phone through the free, open-source SMS Gateway
+// app (sms-gate.app), so it costs only the SIM's normal SMS rate. "outbox"
+// appends messages to a private file on the server for team runs. It never
+// reaches a phone, so it is refused for the field cohort.
+export const SMS_GATE_CLOUD = "https://api.sms-gate.app/3rdparty/v1/messages";
+export function smsChannel(env, folder, fetchImpl = fetch) {
   const provider = env.SMS_PROVIDER || "africastalking";
+  if (provider === "android") return androidGateway(env, fetchImpl);
   if (provider === "outbox") {
     if (env.COHORT === "field")
       throw Error("SMS_PROVIDER=outbox cannot be used with COHORT=field.");
@@ -25,7 +29,7 @@ export function smsChannel(env, folder) {
     };
   }
   if (provider !== "africastalking")
-    throw Error("SMS_PROVIDER must be africastalking or outbox.");
+    throw Error("SMS_PROVIDER must be africastalking, android or outbox.");
   if (!env.AT_USERNAME || !env.AT_API_KEY)
     throw Error("Set AT_USERNAME and AT_API_KEY, or SMS_PROVIDER=outbox.");
   const sms = africastalking({
@@ -51,6 +55,53 @@ export function smsChannel(env, folder) {
         "SMS provider did not accept the message.",
         502,
       );
+    },
+  };
+}
+
+// SMS Gateway for Android: the app signs up to its free cloud relay (or runs a
+// local server on the phone) and shows a username and password. SMSGATE_URL
+// defaults to the cloud endpoint; a local phone uses http://<phone-ip>:8080/message.
+function androidGateway(env, fetchImpl) {
+  if (!env.SMSGATE_USERNAME || !env.SMSGATE_PASSWORD)
+    throw Error("Set SMSGATE_USERNAME and SMSGATE_PASSWORD from the SMS Gateway app.");
+  const endpoint = env.SMSGATE_URL || SMS_GATE_CLOUD;
+  requireThat(/^https:\/\/|^http:\/\/(10|172|192\.168)\./.test(endpoint), "SMSGATE_URL must be https or a local network address.");
+  const auth =
+    "Basic " + Buffer.from(env.SMSGATE_USERNAME + ":" + env.SMSGATE_PASSWORD).toString("base64");
+  const call = (url, init = {}) =>
+    fetchImpl(url, {
+      ...init,
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+  return {
+    channel: "sms from the organiser's phone",
+    accepted: "sent from the organiser's phone",
+    async send(to, message) {
+      requireThat(/^\+\d{8,15}$/.test(to), "Use an international number.");
+      const res = await call(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          textMessage: { text: message },
+          phoneNumbers: [to],
+          withDeliveryReport: true,
+          // Codes are time-sensitive: skip the app's rate limits and quiet hours.
+          priority: 100,
+          ttl: 900,
+        }),
+      });
+      requireThat(res.status !== 401, "The SMS gateway refused its credentials.", 502);
+      const body = await res.json().catch(() => ({}));
+      requireThat(res.ok && body.id, "The SMS gateway did not accept the message.", 502);
+      return { id: body.id, state: body.state };
+    },
+    // Pending, Processed, Sent, Delivered or Failed, as reported by the phone.
+    async status(id) {
+      requireThat(/^[\w-]{1,64}$/.test(String(id)), "Invalid message id.");
+      const res = await call(endpoint.replace(/\/$/, "") + "/" + id);
+      requireThat(res.ok, "The SMS gateway did not return a status.", 502);
+      return res.json();
     },
   };
 }
