@@ -1,0 +1,16 @@
+# Render's free plan sleeps after 15 minutes without visitors and takes about a
+# minute to wake. This visits the health check every 10 minutes during the
+# festival so a judge's first visit is not the one that wakes it.
+name: Keep the demo awake
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Visit the health check
+        run: curl --fail --silent --show-error --max-time 120 --retry 2 https://clainova.onrender.com/api/health > /dev/null
