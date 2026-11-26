@@ -1,0 +1,42 @@
+# Render Blueprint for the public Diana demo: one free Docker web service.
+# Secrets are marked sync: false, so Render asks for them in its dashboard and
+# they never live in this file. The free plan has no disk, so the SQLite store
+# starts empty after each restart; the public send-then-collect path needs nothing stored.
+services:
+  - type: web
+    name: clainova
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: MODE
+        value: testnet
+      - key: PORT
+        value: "8080"
+      - key: DATA_DIR
+        value: /data
+      - key: TRUST_PROXY
+        value: render
+      - key: DEMO_PAYMENTS
+        value: "on"
+      - key: COHORT
+        value: team
+      - key: RPC_URL
+        value: https://evm-testnet.qore.host
+      - key: ESCROW_ADDRESS
+        value: "0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6"
+      - key: ORGANISER_NAME
+        value: Clainova test team
+      - key: SMS_PROVIDER
+        value: outbox
+      - key: DATA_KEY
+        sync: false
+      - key: VERIFIER_SEED
+        sync: false
+      - key: OPERATOR_PASSWORD
+        sync: false
+      - key: SPONSOR_MNEMONIC
+        sync: false
