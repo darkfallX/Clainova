@@ -13,6 +13,7 @@ export const SMS_GATE_CLOUD = "https://api.sms-gate.app/3rdparty/v1/messages";
 export function smsChannel(env, folder, fetchImpl = fetch) {
   const provider = env.SMS_PROVIDER || "africastalking";
   if (provider === "android") return androidGateway(env, fetchImpl);
+  if (provider === "traccar") return traccarGateway(env, fetchImpl);
   if (provider === "outbox") {
     if (env.COHORT === "field")
       throw Error("SMS_PROVIDER=outbox cannot be used with COHORT=field.");
@@ -29,7 +30,7 @@ export function smsChannel(env, folder, fetchImpl = fetch) {
     };
   }
   if (provider !== "africastalking")
-    throw Error("SMS_PROVIDER must be africastalking, android or outbox.");
+    throw Error("SMS_PROVIDER must be africastalking, android, traccar or outbox.");
   if (!env.AT_USERNAME || !env.AT_API_KEY)
     throw Error("Set AT_USERNAME and AT_API_KEY, or SMS_PROVIDER=outbox.");
   const sms = africastalking({
@@ -55,6 +56,34 @@ export function smsChannel(env, folder, fetchImpl = fetch) {
         "SMS provider did not accept the message.",
         502,
       );
+    },
+  };
+}
+
+// Traccar SMS Gateway (Google Play: org.traccar.gateway, GPL-3.0): the app shows a
+// cloud token that reaches the phone through traccar.org, or a local address and
+// key for the same Wi-Fi. It takes {"to","message"} with the token or key as the
+// raw Authorization header and reports no delivery status.
+export const TRACCAR_CLOUD = "https://www.traccar.org/sms/";
+function traccarGateway(env, fetchImpl) {
+  if (!env.TRACCAR_SMS_TOKEN)
+    throw Error("Set TRACCAR_SMS_TOKEN to the cloud token or local key shown in Traccar SMS Gateway.");
+  const endpoint = env.TRACCAR_SMS_URL || TRACCAR_CLOUD;
+  requireThat(/^https:\/\/|^http:\/\/(10|172|192\.168)\./.test(endpoint), "TRACCAR_SMS_URL must be https or a local network address.");
+  return {
+    channel: "sms from the organiser's phone",
+    accepted: "sent from the organiser's phone",
+    async send(to, message) {
+      requireThat(/^\+\d{8,15}$/.test(to), "Use an international number.");
+      const res = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: { Authorization: env.TRACCAR_SMS_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ to, message }),
+        signal: AbortSignal.timeout(15000),
+      });
+      requireThat(res.status !== 401, "The SMS gateway refused its token.", 502);
+      requireThat(res.ok, "The SMS gateway did not accept the message.", 502);
+      return { id: null, state: "Accepted" };
     },
   };
 }
