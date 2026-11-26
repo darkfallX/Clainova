@@ -13,6 +13,8 @@ The chain refused the direct ones with `account has no PQC key`, and they held n
 
 **You can ask the chain yourself.** On every collected payment, your own browser asks QoreChain's `pqcVerify` and `pqcKeyStatus` live. The real signature is accepted. The same signature with one bit changed, for another wallet, or for a wallet without a proven key is refused.
 
+**A real phone, by SMS.** On 26 November 2026 an invitation for 2 test fUSD, and then its six-digit code, reached a handset as ordinary SMS on a Nigerian network. They were sent from the organiser's own phone through [Traccar SMS Gateway](https://github.com/traccar/traccar-sms-gateway), at the SIM's normal rate. On that handset a new wallet verified the code, registered its ML-DSA-87 key and collected the payment on Diana: [funded](https://explore.qore.network/tx/0x78366ccd4a86b1a23fff33fac6e07f370996b5bb79d20f9a36baaabf7376f8e8) at 10:02 UTC, [collected](https://explore.qore.network/tx/0x6b720acf800df27c932cb245965ac6a52be8d10552879074cc02c86edeb84bf9) at 10:17 UTC by the new wallet, which paid its own gas (switch the explorer to Testnet). The first send failed because the server could not reach the relay; it now retries once and says so.
+
 Closest alternative: a claim link. Whoever holds the link can collect it. Here a link without the phone's code is refused.
 
 ## Why it matters
