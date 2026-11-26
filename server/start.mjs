@@ -303,6 +303,7 @@ async function handle(req, res) {
       sponsored: app.sponsored,
       demo: app.demo,
       demoSend: app.demo && app.sponsored,
+      demoPool: app.pool(),
     };
   else if (route === "POST /api/try") {
     requireThat(app.demo, "Page unavailable.", 404);
