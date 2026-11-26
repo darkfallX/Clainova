@@ -34,7 +34,7 @@ Read from the official pages on 25 November 2026. [Rules](https://build.qorechai
 
 ## Known weak points
 
-- **Phone delivery is not real yet.** Codes have gone to a sandbox handset and the demo page, never through a carrier. It is the one thing a link-based rival cannot do, so it matters most.
+- **Phone delivery is proven once, by the builder.** On 26 November an invitation and its code reached the builder's handset as real SMS on a Nigerian network, sent from the builder's own phone through Traccar SMS Gateway, and a new wallet on that handset collected 2 test fUSD (funded `0x78366c…`, collected `0x6b720a…`). Still a team run: nobody outside the team has done it.
 - **Nobody outside the team has used it.**
 - **The contract checks the verifier's signature and the recipient's key status, not a signature by the recipient's own key.** The recipient's key protects the window that lets them call it. Rivals verify the user's own signature in the contract.
 - **One verifier decides which wallet belongs to a number.** Its key cannot be rotated.
@@ -47,3 +47,4 @@ Read from the official pages on 25 November 2026. [Rules](https://build.qorechai
 | 25 Nov 2026, 22:00 Lagos | Fix first | First screen was a password page, the post-quantum checks were invisible, no baseline, no dated incident |
 | 25 Nov 2026, after fixes | Fix first | Those four are fixed and seen working on the public link. Still missing: video, permanent host, real SMS, outside users |
 | 25 Nov 2026, 23:45 Lagos, core only (host and video set aside) | Fix first | Re-checked from outside: 10 of 10 baseline transactions and 76 of 76 recorded checks pass on Diana; the escrow shows 32 funded, 19 collected, 1 refunded; 29 unit and 11 contract tests pass; 0 scanner alarms. The read-only check crashed on a slow connection, now retries. Still unproven: SMS reaching a real handset, anyone outside the team. Closest rivals have far more tests (Postmark 126, Haven Escrow 111) and Postmark uses a 2-of-3 verifier quorum where we use one verifier |
+| 26 Nov 2026, 12:30 Lagos | Fix first | Real SMS reached a real handset through a Nigerian carrier at no service cost, and the builder collected on that phone (seen on Diana). Contract tests 11 → 106, with 6 of 6 deliberately broken contracts caught. Wallet password step now explains itself and asks twice. Still missing: outside users, permanent host, video, featured image, feedback post |
