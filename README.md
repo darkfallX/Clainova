@@ -62,7 +62,7 @@ The code appears on the page instead of going to a phone, and the page says so. 
 
 Both QCAI audit stages are complete: 65/100 with six findings on v1, then 85/100 with four on v2, none needing a contract change. The reports and the response to each finding are in [docs/AUDIT.md](docs/AUDIT.md). Carrier delivery to a handset is pending.
 
-[Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Festival research](docs/festival.md) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
+[Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
 ## Run locally
 
