@@ -202,9 +202,17 @@ try {
   // The grant must have arrived before a reload can be expected to keep it.
   await page.getByText(/^Number verified/).waitFor();
   await page.reload();
-  await page.getByLabel("Wallet passphrase").waitFor();
+  await page.getByLabel("Create a password").waitFor();
   const password = randomBytes(16).toString("hex");
-  await page.getByLabel("Wallet passphrase").fill(password);
+  await page.getByLabel("Create a password").fill(password);
+  // A typo in the second box is caught before any wallet is made.
+  await page.getByLabel("Type it again").fill(password + "x");
+  await page.getByRole("button", { name: "Create my wallet" }).click();
+  await page.getByText("The two passwords don't match.").waitFor();
+  assert.equal(await page.getByRole("button", { name: "Save encrypted backup" }).count(), 0);
+  await page.getByLabel("Show password").check();
+  assert.equal(await page.getByLabel("Type it again").getAttribute("type"), "text");
+  await page.getByLabel("Type it again").fill(password);
   await page.getByRole("button", { name: "Create my wallet" }).click();
   await page.getByRole("button", { name: "Save encrypted backup" }).waitFor();
   const backup = page.waitForEvent("download");
@@ -290,7 +298,9 @@ try {
   await accessibility(mobile);
   await mobile.getByText("More wallet options").click();
   await mobile.locator("#restore").setInputFiles(backupPath);
-  await mobile.getByLabel("Wallet passphrase").fill(password);
+  // Restoring uses the backup's own password, so there is no second box.
+  assert.equal(await mobile.getByLabel("Type it again").isVisible(), false);
+  await mobile.getByLabel("Backup password").fill(password);
   await mobile.getByRole("button", { name: "Restore wallet" }).click();
   await mobile.getByText("Available · 19 test fUSD").waitFor();
   await second.close();
