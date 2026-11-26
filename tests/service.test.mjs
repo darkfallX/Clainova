@@ -259,13 +259,18 @@ test("demo payments are opt-in, show their code, hold one per visitor and send n
   await assert.rejects(
     app.create("organiser", { ...request, demo: false, phone: "+2348012345678", requestKey: randomUUID() }),
   );
-  await assert.rejects(app.take("v1"), /in use/);
+  assert.equal(off.app.pool(), 0);
+  assert.equal(app.pool(), 0);
+  await assert.rejects(app.take("v1"), /No test payment is waiting/);
   await fund();
   await fund();
+  assert.equal(app.pool(), 2);
   const { link } = await app.take("v1");
+  assert.equal(app.pool(), 1);
   assert.equal((await app.take("v1")).link, link);
   const other = await app.take("v2");
   assert.notEqual(other.link, link);
+  assert.equal(app.pool(), 0);
   await assert.rejects(app.take("v3"), /in use/);
   const { pageCode } = await app.code(link);
   assert.match(pageCode, /^\d{6}$/);
@@ -317,7 +322,7 @@ test("a visitor sends exactly one demo payment, resumes it, and cannot reach any
   // Other visitors and the organiser's own ledger and pool never include it.
   assert.deepEqual(await app.sent("v2"), { row: null });
   assert.equal((await app.list("organiser")).rows.length, 0);
-  await assert.rejects(app.take("v2"), /in use/);
+  await assert.rejects(app.take("v2"), /No test payment is waiting/);
   await assert.rejects(app.operatorEvidence("visitor:v2", row.id, "funding", "0x1"), /unavailable/);
   assert.equal(sms, 0);
   // Without a sponsor there are no public sends.
