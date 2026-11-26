@@ -18,7 +18,10 @@ const sent = await channel.send(
   "Clainova delivery check " + new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC. No action needed.",
 );
 console.log(seconds(), "accepted by", channel.channel, "for", masked, sent?.id ? "id " + sent.id : "");
-if (!channel.status || !sent?.id) process.exit(0);
+if (!channel.status || !sent?.id) {
+  console.log("This channel reports no delivery status. Look at the phone to confirm the message arrived.");
+  process.exit(0);
+}
 
 let last = "";
 for (let i = 0; i < 40; i++) {
