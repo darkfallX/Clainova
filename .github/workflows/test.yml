@@ -28,3 +28,17 @@ jobs:
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:4173/ && exit 0; sleep 1; done
           docker logs app
           exit 1
+  # Redeploys the public demo on Render after every push to main that passes
+  # both jobs. The deploy hook is a secret URL kept in the repository's
+  # Actions secrets as RENDER_DEPLOY_HOOK; without it this step does nothing.
+  deploy:
+    needs: [test, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "No RENDER_DEPLOY_HOOK secret, skipping the deploy."; exit 0; fi
+          curl --fail --silent --show-error --max-time 60 -X POST "$HOOK" > /dev/null
+          echo "Render deploy started."
