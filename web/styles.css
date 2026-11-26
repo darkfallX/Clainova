@@ -1663,6 +1663,8 @@ dialog[open]::backdrop {
 /* Answers from the chain's post-quantum checks */
 .pq dd {
   font-weight: 600;
+  /* Break short answers between words only, never mid-word */
+  overflow-wrap: break-word;
 }
 .pq-ok {
   color: #235a4e;
