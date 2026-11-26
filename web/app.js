@@ -69,13 +69,21 @@ function walletBox() {
     (demoSend
       ? wallet.saved ? "Unlock the sender wallet" : "Set up a sender wallet"
       : wallet.saved ? "Unlock your wallet" : "Set up your wallet") +
-    '</h3><p class="helper">' +
+    '</h3><p class="helper" id="pwHelp">' +
     (wallet.saved
-      ? "Enter the passphrase for this device."
-      : "Choose a passphrase to encrypt your new wallet on this device. Save the backup so you can use it elsewhere.") +
-    '</p><form id="walletForm"><div class="field"><label for="password">Wallet passphrase</label><input type="password" id="password" minlength="10" required autocomplete="' +
+      ? "Enter the password you chose for this wallet on this device."
+      : "We create your wallet for you, with a new post-quantum key. This password locks it on this device and on its backup file. Nobody can reset it, so keep it somewhere safe.") +
+    '</p><form id="walletForm" novalidate><div class="field"><label for="password" id="pwLabel">' +
+    (wallet.saved ? "Wallet password" : "Create a password") +
+    '</label><input type="password" id="password" minlength="10" required aria-describedby="pwHelp pwError" autocomplete="' +
     (wallet.saved ? "current" : "new") +
-    '-password"></div><button class="primary">' +
+    '-password"></div>' +
+    (wallet.saved
+      ? ""
+      : '<div class="field" id="confirmField"><label for="password2">Type it again</label><input type="password" id="password2" minlength="10" required aria-describedby="pwError" autocomplete="new-password"></div>') +
+    '<label class="check-row"><input type="checkbox" id="showPw"> Show password</label>' +
+    '<span class="field-error" id="pwError" aria-live="polite"></span>' +
+    '<button class="primary">' +
     (wallet.saved ? "Unlock wallet" : "Create my wallet") +
     '</button></form><details><summary>More wallet options</summary><div class="field"><label for="restore">Restore an encrypted Clainova backup</label><input id="restore" type="file" accept=".json,application/json"></div>' +
     (!local && !demoSend ? action("qorex", "Connect QoreX account") : "") +
@@ -84,13 +92,35 @@ function walletBox() {
 }
 function bindWallet(next) {
   const restore = el("#restore");
+  const confirm = el("#confirmField");
+  const pwError = el("#pwError");
+  const clearError = () => {
+    if (!pwError) return;
+    pwError.textContent = "";
+    for (const id of ["#password", "#password2"]) el(id)?.removeAttribute("aria-invalid");
+  };
+  if (el("#showPw"))
+    el("#showPw").onchange = (e) => {
+      for (const id of ["#password", "#password2"])
+        if (el(id)) el(id).type = e.target.checked ? "text" : "password";
+    };
+  for (const id of ["#password", "#password2"]) if (el(id)) el(id).oninput = clearError;
   if (restore)
     restore.onchange = () => {
-      el("#walletForm button").textContent = restore.files.length
+      const restoring = restore.files.length > 0;
+      el("#walletForm button.primary").textContent = restoring
         ? "Restore wallet"
         : wallet.saved
           ? "Unlock wallet"
           : "Create my wallet";
+      el("#pwLabel").textContent = restoring
+        ? "Backup password"
+        : wallet.saved
+          ? "Wallet password"
+          : "Create a password";
+      // A backup already has its password, so there is nothing to confirm.
+      if (confirm) confirm.hidden = restoring;
+      clearError();
     };
   click("#backup", () => wallet.backup());
   click("#qorex", async () => {
@@ -98,8 +128,22 @@ function bindWallet(next) {
     await next();
   });
   on("#walletForm", "submit", async () => {
-    status("Unlocking your wallet…");
     const file = el("#restore")?.files[0];
+    const first = el("#password").value;
+    const problem =
+      first.length < 10
+        ? "Use at least 10 characters."
+        : confirm && !confirm.hidden && el("#password2").value !== first
+          ? "The two passwords don't match."
+          : "";
+    if (problem) {
+      pwError.textContent = problem;
+      const bad = problem.includes("match") ? el("#password2") : el("#password");
+      bad.setAttribute("aria-invalid", "true");
+      bad.focus();
+      return;
+    }
+    status(file ? "Restoring your wallet…" : wallet.saved ? "Unlocking your wallet…" : "Creating your wallet…");
     if (file && file.size > 100000)
       throw Error("Choose a Clainova wallet backup.");
     await wallet.unlock(
@@ -990,7 +1034,7 @@ function legal() {
           : "Clainova is a festival testnet application.",
       ) +
       (privacy
-        ? "<h2>Phone numbers and codes</h2><p>The verifier stores the number encrypted and uses it to send the invitation and one-time codes. The ledger shows only its last four digits. Africa’s Talking receives the number and message in SMS mode. The rehearsal inbox stays on the local machine.</p><h2>Public payment records</h2><p>Escrow transactions expose addresses, amounts and timing. The private invitation link, note, number and code stay off-chain. The operator can read notes and decrypt phone numbers. Ask the organiser who invited you to remove the off-chain record after settlement. Public chain records persist.</p><h2>Wallet storage</h2><p>Your browser encrypts its wallet backup with your passphrase and stores it on this device. Save a copy before clearing browser data. The verifier cannot restore a lost passphrase. Browser cookies keep organiser sessions separate.</p>"
+        ? "<h2>Phone numbers and codes</h2><p>The verifier stores the number encrypted and uses it to send the invitation and one-time codes. The ledger shows only its last four digits. Africa’s Talking receives the number and message in SMS mode. The rehearsal inbox stays on the local machine.</p><h2>Public payment records</h2><p>Escrow transactions expose addresses, amounts and timing. The private invitation link, note, number and code stay off-chain. The operator can read notes and decrypt phone numbers. Ask the organiser who invited you to remove the off-chain record after settlement. Public chain records persist.</p><h2>Wallet storage</h2><p>Clainova creates your wallet in your browser. Your password encrypts it and its backup on this device. Save a copy before clearing browser data. Nobody can reset a lost password. Browser cookies keep organiser sessions separate.</p>"
         : "<h2>Test assets</h2><p>Only use festival test tokens. They have no cash value. Use a dedicated test wallet, send invitations only to people expecting payment, and confirm the phone number before issuing one.</p><h2>Collection and refunds</h2><p>A verification code establishes current access to the number. A single verifier authorises the receiving wallet. After expiry, anyone may call the escrow refund function. Only the original sender receives the refund.</p><h2>Rehearsal mode</h2><p>The local ledger and inbox are for practice. Testnet mode uses external services and requires network fees in test QOR. SMS delivery and transaction inclusion can take time.</p>") +
       "</article>",
     "legal" + currentPath,
