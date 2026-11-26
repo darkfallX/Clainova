@@ -65,6 +65,21 @@ export function smsChannel(env, folder, fetchImpl = fetch) {
 // key for the same Wi-Fi. It takes {"to","message"} with the token or key as the
 // raw Authorization header and reports no delivery status.
 export const TRACCAR_CLOUD = "https://www.traccar.org/sms/";
+
+// Reaches a gateway, retrying once only when no connection was made, so a
+// message is never sent twice. Any failure becomes a clear 502 for the caller.
+const NOT_CONNECTED = new Set(["UND_ERR_CONNECT_TIMEOUT", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
+async function reach(fetchImpl, url, init) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetchImpl(url, { ...init, signal: AbortSignal.timeout(15000) });
+    } catch (err) {
+      const code = err?.cause?.code || err?.code;
+      if (attempt < 2 && NOT_CONNECTED.has(code)) continue;
+      throw Object.assign(new Error("The SMS gateway could not be reached. Try again."), { status: 502 });
+    }
+  }
+}
 function traccarGateway(env, fetchImpl) {
   if (!env.TRACCAR_SMS_TOKEN)
     throw Error("Set TRACCAR_SMS_TOKEN to the cloud token or local key shown in Traccar SMS Gateway.");
@@ -75,11 +90,10 @@ function traccarGateway(env, fetchImpl) {
     accepted: "sent from the organiser's phone",
     async send(to, message) {
       requireThat(/^\+\d{8,15}$/.test(to), "Use an international number.");
-      const res = await fetchImpl(endpoint, {
+      const res = await reach(fetchImpl, endpoint, {
         method: "POST",
         headers: { Authorization: env.TRACCAR_SMS_TOKEN, "Content-Type": "application/json" },
         body: JSON.stringify({ to, message }),
-        signal: AbortSignal.timeout(15000),
       });
       requireThat(res.status !== 401, "The SMS gateway refused its token.", 502);
       requireThat(res.ok, "The SMS gateway did not accept the message.", 502);
@@ -99,10 +113,9 @@ function androidGateway(env, fetchImpl) {
   const auth =
     "Basic " + Buffer.from(env.SMSGATE_USERNAME + ":" + env.SMSGATE_PASSWORD).toString("base64");
   const call = (url, init = {}) =>
-    fetchImpl(url, {
+    reach(fetchImpl, url, {
       ...init,
       headers: { Authorization: auth, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(15000),
     });
   return {
     channel: "sms from the organiser's phone",
