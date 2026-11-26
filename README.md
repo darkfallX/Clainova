@@ -2,6 +2,8 @@
 
 **Pay someone by phone number, before they have a wallet.** An organiser funds a payment. It waits in escrow on QoreChain until that person verifies a code and collects it into a new wallet with an ML-DSA-87 key. If nobody collects, the sender can get it back.
 
+**Try it in about two minutes: [clainova.onrender.com/try](https://clainova.onrender.com/try).** Send a test payment as the organiser, then collect it into a new post-quantum wallet. Every step is a real transaction on Diana, and you need no phone, wallet, extension or QOR.
+
 | Five new wallets each, no QOR, 25 November 2026, Diana | Could spend the money |
 |---|---|
 | Paid through Clainova | **5 of 5** |
@@ -47,7 +49,7 @@ The script is read-only, needs no keys and runs 76 checks against Diana.
 
 Five more payments cover a page closed right after the claim was broadcast, a refund triggered by a different account, two collections through the public demo on an emulated slow phone, and one whose invitation and code went through the SMS provider's test handset. [All transactions](submission/diana-run.json)
 
-These were **team runs**. The team operated every wallet, and no code came from a carrier. Delivery to a real handset and use by someone outside the team are still to be shown.
+These were **team runs**. The team operated every wallet. The real-handset SMS run above used the builder's own phone, so use by someone outside the team is still to be shown.
 
 ### Try it without a phone
 
