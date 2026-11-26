@@ -453,9 +453,10 @@ function watchCollection(row) {
     if (++checks > 150 || !el(".issued")) return clearInterval(timer);
     try {
       const { row: latest } = await api("/api/try/sent", {});
-      // The receipt follows the collection by a few seconds.
-      const settled = latest.evidence?.collection || ++waits > 8;
-      if (latest.state !== row.state && settled) {
+      if (latest.state === row.state) return;
+      // The receipt follows the collection by a few seconds. Count the wait
+      // only from the change, so the live check has a receipt to ask about.
+      if (latest.evidence?.collection || ++waits > 8) {
         clearInterval(timer);
         issued(latest);
       }
