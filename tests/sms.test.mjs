@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { smsChannel, SMS_GATE_CLOUD } from "../server/sms.mjs";
+import { smsChannel, SMS_GATE_CLOUD, TRACCAR_CLOUD } from "../server/sms.mjs";
 
 const creds = { SMS_PROVIDER: "android", SMSGATE_USERNAME: "user", SMSGATE_PASSWORD: "pass-1234" };
 function fakeGateway(reply = { status: 202, body: { id: "m1", state: "Pending" } }) {
@@ -81,5 +81,27 @@ test("outbox stays refused for the field cohort and writes privately otherwise",
 });
 
 test("unknown providers are refused", () => {
-  assert.throws(() => smsChannel({ SMS_PROVIDER: "carrier-pigeon" }, "."), /africastalking, android or outbox/);
+  assert.throws(() => smsChannel({ SMS_PROVIDER: "carrier-pigeon" }, "."), /africastalking, android, traccar or outbox/);
+});
+
+const traccar = { SMS_PROVIDER: "traccar", TRACCAR_SMS_TOKEN: "fcm-token-123" };
+test("traccar gateway posts to and message with the raw token", async () => {
+  const g = fakeGateway({ status: 200, body: {} });
+  const out = await smsChannel(traccar, ".", g.fetchImpl).send("+2348012345678", "Clainova code: 654321");
+  assert.deepEqual(out, { id: null, state: "Accepted" });
+  assert.equal(g.calls[0].url, TRACCAR_CLOUD);
+  assert.equal(g.calls[0].init.headers.Authorization, "fcm-token-123");
+  assert.deepEqual(g.calls[0].body, { to: "+2348012345678", message: "Clainova code: 654321" });
+});
+
+test("traccar gateway needs a token and refuses bad replies", async () => {
+  assert.throws(() => smsChannel({ SMS_PROVIDER: "traccar" }, "."), /TRACCAR_SMS_TOKEN/);
+  await assert.rejects(smsChannel(traccar, ".", fakeGateway({ status: 401, body: {} }).fetchImpl).send("+2348012345678", "x"), /refused its token/);
+  await assert.rejects(smsChannel(traccar, ".", fakeGateway({ status: 500, body: {} }).fetchImpl).send("+2348012345678", "x"), /did not accept/);
+  await assert.rejects(smsChannel(traccar, ".", fakeGateway().fetchImpl).send("0801", "x"), /international/);
+});
+
+test("traccar gateway accepts the phone's local address", () => {
+  assert.ok(smsChannel({ ...traccar, TRACCAR_SMS_URL: "http://192.168.0.5:8082" }, "."));
+  assert.throws(() => smsChannel({ ...traccar, TRACCAR_SMS_URL: "http://evil.example/sms" }, "."), /https or a local/);
 });
