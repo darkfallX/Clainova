@@ -43,14 +43,14 @@ export function walletTools(cfg, api, progress, slot = "") {
   }
   async function unlock(password, file) {
     if (password.length < 10)
-      throw Error("Use a passphrase of at least 10 characters.");
+      throw Error("Use a password of at least 10 characters.");
     const saved = file || localStorage.getItem(storage);
     if (saved) {
       let opened;
       try {
         opened = await keystore({ json: saved, password }, share("Unlocking"));
       } catch {
-        throw Error("The passphrase or encrypted backup is incorrect.");
+        throw Error("That password does not open this wallet or backup.");
       }
       if (!opened.phrase)
         throw Error("Choose a Clainova backup with recovery data.");
