@@ -1015,7 +1015,10 @@ function tryDemo() {
       (cfg.demoSend
         ? '<a class="button" href="/try/send">Send, then collect <span class="arrow" aria-hidden="true">→</span></a>'
         : "") +
-      action("take", cfg.demoSend ? "Only collect" : "Take a test payment", !cfg.demoSend) +
+      // "Only collect" needs a pre-funded payment; a new server has none.
+      (!cfg.demoSend || cfg.demoPool > 0
+        ? action("take", cfg.demoSend ? "Only collect" : "Take a test payment", !cfg.demoSend)
+        : "") +
       "</div></div>",
     "try",
   );
