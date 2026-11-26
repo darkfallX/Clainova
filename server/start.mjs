@@ -16,6 +16,9 @@ const env = process.env,
 if (!["rehearsal", "testnet"].includes(mode))
   throw Error("MODE must be rehearsal or testnet.");
 const port = Number(env.PORT || 4173);
+// Render names the service's public address itself.
+if (!env.PUBLIC_ORIGIN && env.RENDER_EXTERNAL_URL)
+  env.PUBLIC_ORIGIN = env.RENDER_EXTERNAL_URL;
 if (!local) {
   // Names every missing setting at once, and never prints a value.
   const wrong = [
@@ -69,13 +72,27 @@ const staticFiles = {
 const loopback = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 // On a host, "fly" trusts Fly's own header, and "forwarded" uses the entry the
 // nearest proxy appended, because earlier entries can be written by the visitor.
+// "render" trusts Cloudflare's client header, which Render's edge sets on every
+// request to an onrender.com address; the service itself is not reachable directly.
+// Each outcome is logged once, never with the address, so a host's logs show
+// whether its proxy sends the header.
+let missingProxyHeader = false,
+  seenProxyHeader = false;
 function clientAddress(req) {
   const socket = req.socket.remoteAddress || "";
   const header = {
     cloudflare: loopback.has(socket) && req.headers["cf-connecting-ip"],
     fly: req.headers["fly-client-ip"],
     forwarded: req.headers["x-forwarded-for"]?.split(",").pop().trim(),
+    render: req.headers["cf-connecting-ip"],
   }[env.TRUST_PROXY];
+  if (env.TRUST_PROXY && !header && !missingProxyHeader) {
+    missingProxyHeader = true;
+    console.warn("TRUST_PROXY=" + env.TRUST_PROXY + " but a request had no client header; its limits use the socket address.");
+  } else if (env.TRUST_PROXY && header && !seenProxyHeader) {
+    seenProxyHeader = true;
+    console.log("TRUST_PROXY=" + env.TRUST_PROXY + ": client header found.");
+  }
   return typeof header === "string" && header && header.length <= 64
     ? header
     : socket;
