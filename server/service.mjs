@@ -330,6 +330,21 @@ export function service({ store, authority, live, config, clock = now }) {
     },
     // Hands one funded demo payment to a visitor. A visitor keeps the same one
     // until it is collected, and an unused one is released after two hours.
+    // How many pre-funded demo payments a new visitor could take now, from the
+    // stored records, so the page offers "Only collect" only when one waits.
+    pool() {
+      if (!this.demo) return 0;
+      return store
+        .list("organiser")
+        .filter(
+          (row) =>
+            row.demo &&
+            row.state === "funded" &&
+            row.expiry > clock() + 3600 &&
+            !row.bound &&
+            clock() - (row.taken || 0) > 7200,
+        ).length;
+    },
     async take(visitor) {
       requireThat(this.demo, "Demo payments are off.", 404);
       return locked("demo", async () => {
@@ -338,6 +353,11 @@ export function service({ store, authority, live, config, clock = now }) {
           row.state === "funded" &&
           row.expiry > clock() + 3600;
         const rows = store.list("organiser").filter(free);
+        requireThat(
+          rows.length,
+          "No test payment is waiting on this server. Use Send, then collect.",
+          409,
+        );
         const mineNow = rows.find((row) => row.takenBy === visitor);
         for (const row of [
           ...(mineNow ? [mineNow] : []),
