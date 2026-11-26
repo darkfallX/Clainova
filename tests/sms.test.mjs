@@ -101,6 +101,32 @@ test("traccar gateway needs a token and refuses bad replies", async () => {
   await assert.rejects(smsChannel(traccar, ".", fakeGateway().fetchImpl).send("0801", "x"), /international/);
 });
 
+test("a gateway that cannot be reached is retried once, then reported clearly", async () => {
+  let tries = 0;
+  const offline = async () => {
+    tries++;
+    throw Object.assign(new TypeError("fetch failed"), { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } });
+  };
+  await assert.rejects(smsChannel(traccar, ".", offline).send("+2348012345678", "x"), (e) => e.status === 502 && /could not be reached/.test(e.message));
+  assert.equal(tries, 2);
+  let second = 0;
+  const flaky = async () => {
+    if (second++ === 0) throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    return { status: 200, ok: true, json: async () => ({}) };
+  };
+  assert.deepEqual(await smsChannel(traccar, ".", flaky).send("+2348012345678", "x"), { id: null, state: "Accepted" });
+});
+
+test("a gateway that timed out after connecting is not retried, so nothing is sent twice", async () => {
+  let tries = 0;
+  const slow = async () => {
+    tries++;
+    throw Object.assign(new Error("aborted"), { name: "TimeoutError" });
+  };
+  await assert.rejects(smsChannel(traccar, ".", slow).send("+2348012345678", "x"), /could not be reached/);
+  assert.equal(tries, 1);
+});
+
 test("traccar gateway accepts the phone's local address", () => {
   assert.ok(smsChannel({ ...traccar, TRACCAR_SMS_URL: "http://192.168.0.5:8082" }, "."));
   assert.throws(() => smsChannel({ ...traccar, TRACCAR_SMS_URL: "http://evil.example/sms" }, "."), /https or a local/);
