@@ -14,3 +14,7 @@ Clainova-CONCEPT.md
 docs/festival.md
 submission/festival-entry.md
 submission/post-collected.png
+
+# solidity-coverage output (npm run coverage)
+coverage/
+coverage.json
