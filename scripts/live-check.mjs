@@ -2,7 +2,7 @@
 //   ORIGIN=https://… node scripts/live-check.mjs 5
 // The Clainova half and the attacks need no keys: they use the public demo.
 // SPONSOR_MNEMONIC is only needed for the direct-transfer half, to pay 1 test fUSD
-// to each new wallet. Results go to submission/live-check.json.
+// to each new wallet. Results go to submission/live-check.json, or to OUT if set.
 import fs from "node:fs";
 import { Contract, HDNodeWallet, JsonRpcProvider, encodeBase64, hexlify, getBytes } from "ethers";
 import { MsgSend } from "cosmjs-types/cosmos/bank/v1beta1/tx.js";
@@ -163,6 +163,6 @@ try {
   out.attacksRefused = attacks.filter((x) => x.refused).length + " of " + attacks.length;
   console.log(out.headline, "Attacks refused:", out.attacksRefused);
 } finally {
-  fs.writeFileSync("submission/live-check.json", JSON.stringify(out, null, 2) + "\n");
+  fs.writeFileSync(process.env.OUT || "submission/live-check.json", JSON.stringify(out, null, 2) + "\n");
   rpc.destroy();
 }
