@@ -1,4 +1,4 @@
-import { Contract, Interface, JsonRpcProvider, Wallet, getBytes, hexlify } from "ethers";
+import { Contract, Interface, JsonRpcProvider, Wallet, decodeBase64, getBytes, hexlify } from "ethers";
 import { qorAddress } from "./native.js";
 // Asks Diana's post-quantum precompiles about one collected payment, from the
 // visitor's own browser. Every call is read-only.
@@ -12,6 +12,7 @@ export async function askDiana(cfg, api, hash) {
       [
         "function verifierKey() view returns(bytes)",
         "function message(bytes32,address,uint64) view returns(bytes)",
+        "function payments(bytes32) view returns(address,uint64,uint8,uint128,address)",
       ],
       rpc,
     );
@@ -25,7 +26,20 @@ export async function askDiana(cfg, api, hash) {
       ["function pqcKeyStatus(address) view returns(bool,uint8,bytes,bool)"],
       rpc,
     );
-    const tx = await rpc.getTransaction(hash);
+    // A cross-VM claim is a native transaction (its hash has no 0x); the claim
+    // call is the payload of its MsgCrossVMCall, and the payer is the escrow's
+    // recorded recipient. An older claim is an EVM transaction.
+    let tx;
+    if (hash.startsWith("0x")) tx = await rpc.getTransaction(hash);
+    else {
+      const { tx: signed } = await api("/api/native/receipt/" + hash);
+      const call = (signed?.body?.messages || []).find(
+        (m) => m["@type"] === "/qorechain.crossvm.v1.MsgCrossVMCall",
+      );
+      const data = hexlify(decodeBase64(call.payload));
+      const [claimId] = claimAbi.decodeFunctionData("claim", data);
+      tx = { data, from: (await escrow.payments(claimId))[4] };
+    }
     const [id, deadline, signature] = claimAbi.decodeFunctionData("claim", tx.data);
     const stranger = Wallet.createRandom().address;
     const changed = getBytes(signature);
@@ -54,7 +68,11 @@ export async function askDiana(cfg, api, hash) {
         ["The same signature, another wallet", answer(redirected), !redirected],
         ["This wallet’s ML-DSA-87 key", proven(owner) ? "Registered and proven" : "Missing", proven(owner)],
         ["A wallet without one", proven(unknown) ? "Accepted" : "Refused", !proven(unknown)],
-        ["This wallet’s spending window", window.live ? "Open" : "Closed", true],
+        [
+          "This wallet’s EVM window",
+          !window.found ? "Never opened" : window.live ? "Open" : "Closed",
+          true,
+        ],
       ],
     };
   } finally {
