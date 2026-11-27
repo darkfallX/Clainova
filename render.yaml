@@ -27,7 +27,7 @@ services:
       - key: RPC_URL
         value: https://evm-testnet.qore.host
       - key: ESCROW_ADDRESS
-        value: "0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6"
+        value: "0xEEc16Da3AD0C4187EBdeF81d91e3b6706159aDd1"
       - key: ORGANISER_NAME
         value: Clainova test team
       - key: SMS_PROVIDER
