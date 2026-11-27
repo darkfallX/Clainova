@@ -7,7 +7,14 @@ const E = require("ethers");
 
 const DAY = 86400;
 const LEN = 4627;
-describe("ClainovaClaims rules", function () {
+// Every rule here also holds for v3, which adds an ML-DSA-87 guardian (see
+// escrow-v3.cjs). Each suite runs once per contract; v3 gets a placeholder
+// guardian key, because these tests never use it.
+const GUARDIAN = "0x" + "5a".repeat(2592);
+const withGuardian = (name, args) => (name === "ClainovaClaimsV3" && args.length === 2 ? [...args, GUARDIAN] : args);
+// ESCROW_ONLY limits a run to one contract (scripts/mutation-check.mjs uses it).
+for (const NAME of ["ClainovaClaims", "ClainovaClaimsV3"].filter((n) => !process.env.ESCROW_ONLY || n === process.env.ESCROW_ONLY))
+describe("ClainovaClaims rules" + (NAME === "ClainovaClaimsV3" ? " (v3)" : ""), function () {
   this.timeout(120000);
   let A, rpc, accounts, sender, recipient, other, token, escrow, check, registry, signer, message;
   const addr = (n) => E.getAddress(E.toBeHex(n, 20));
@@ -19,7 +26,7 @@ describe("ClainovaClaims rules", function () {
   const wait = async (p) => (await p).wait();
   async function deploy(name, args = [], from = sender) {
     const a = A[name];
-    const c = await new E.ContractFactory(a.abi, a.evm.bytecode.object, from).deploy(...args);
+    const c = await new E.ContractFactory(a.abi, a.evm.bytecode.object, from).deploy(...withGuardian(name, args));
     await c.waitForDeployment();
     return c;
   }
@@ -42,20 +49,19 @@ describe("ClainovaClaims rules", function () {
   }
 
   before(async () => {
-    const { compile } = await import("../../scripts/compile.mjs");
-    A = compile(["contracts/ClainovaClaims.sol", "tests/contract/Fixtures.sol"]);
+    A = await require("./harness.cjs").compiled(["contracts/ClainovaClaims.sol", "contracts/ClainovaClaimsV3.sol", "tests/contract/Fixtures.sol"]);
     signer = (await import("../../server/network.mjs")).authority(E.randomBytes(32));
     ({ message } = await import("../../server/common.mjs"));
   });
   beforeEach(async () => {
-    await hre.network.provider.send("hardhat_reset");
+    await require("./harness.cjs").freshChain();
     rpc = new E.BrowserProvider(hre.network.provider, undefined, { cacheTimeout: -1 });
     accounts = await Promise.all([...Array(12).keys()].map((i) => rpc.getSigner(i)));
     [sender, recipient, other] = accounts;
     check = await inject("VerificationFixture", 2561);
     registry = await inject("RegistryFixture", 2562);
     token = await deploy("TokenFixture");
-    escrow = await deploy("ClainovaClaims", [token.target, signer.publicKey]);
+    escrow = await deploy(NAME, [token.target, signer.publicKey]);
     for (const a of accounts.slice(0, 4)) {
       await wait(token.mint(a.address, 10n ** 30n));
       await wait(token.connect(a).approve(escrow.target, 10n ** 30n));
@@ -68,13 +74,13 @@ describe("ClainovaClaims rules", function () {
     it("stores the verifier key exactly", async () => assert.equal(await escrow.verifierKey(), signer.publicKey));
     it("exposes the domain tag", async () => assert.equal(await escrow.DOMAIN(), E.id("Clainova/collect/v1")));
     it("exposes a 30-day maximum period", async () => assert.equal(await escrow.MAX_PERIOD(), BigInt(30 * DAY)));
-    it("refuses a token address with no code", async () => reverts(deploy("ClainovaClaims", [other.address, signer.publicKey]), "Invalid configuration"));
+    it("refuses a token address with no code", async () => reverts(deploy(NAME, [other.address, signer.publicKey]), "Invalid configuration"));
     for (const n of [0, 1, 2591, 2593, 4627])
-      it(`refuses a ${n}-byte verifier key`, async () => reverts(deploy("ClainovaClaims", [token.target, new Uint8Array(n).fill(1)]), "Invalid configuration"));
+      it(`refuses a ${n}-byte verifier key`, async () => reverts(deploy(NAME, [token.target, new Uint8Array(n).fill(1)]), "Invalid configuration"));
     it("accepts a key whose only non-zero byte is the last", async () => {
       const key = new Uint8Array(2592);
       key[2591] = 1;
-      await deploy("ClainovaClaims", [token.target, key]);
+      await deploy(NAME, [token.target, key]);
     });
     it("rejects plain QOR sent to it", async () =>
       reverts(sender.sendTransaction({ to: escrow.target, value: 1n })));
@@ -194,7 +200,7 @@ describe("ClainovaClaims rules", function () {
       const seen = new Set([await escrow.message(...base)]);
       for (const v of [[salt(23), base[1], 100], [base[0], other.address, 100], [base[0], base[1], 101]])
         seen.add(await escrow.message(...v));
-      const second = await deploy("ClainovaClaims", [token.target, signer.publicKey]);
+      const second = await deploy(NAME, [token.target, signer.publicKey]);
       seen.add(await second.message(...base));
       assert.equal(seen.size, 5);
     });
@@ -297,7 +303,7 @@ describe("ClainovaClaims rules", function () {
       await reverts(claim(s2), "Invalid attestation");
     });
     it("refuses an attestation made for another escrow", async () => {
-      const second = await deploy("ClainovaClaims", [token.target, signer.publicKey]);
+      const second = await deploy(NAME, [token.target, signer.publicKey]);
       const s2 = await attest(id, recipient.address, exp, second);
       await reverts(claim(s2), "Invalid attestation");
     });
@@ -420,7 +426,7 @@ describe("ClainovaClaims rules", function () {
     });
     it("cannot pay out more than it holds with a fee-on-transfer token", async () => {
       const short = await deploy("ShortTokenFixture");
-      const e2 = await deploy("ClainovaClaims", [short.target, signer.publicKey]);
+      const e2 = await deploy(NAME, [short.target, signer.publicKey]);
       await wait(short.mint(sender.address, 1000));
       await wait(short.approve(e2.target, 1000));
       const exp = (await now()) + DAY;
@@ -435,7 +441,7 @@ describe("ClainovaClaims rules", function () {
     let evil, e2, exp;
     beforeEach(async () => {
       evil = await deploy("ReentrantAnyFixture");
-      e2 = await deploy("ClainovaClaims", [evil.target, signer.publicKey]);
+      e2 = await deploy(NAME, [evil.target, signer.publicKey]);
       await wait(evil.mint(sender.address, 1000));
       await wait(evil.approve(e2.target, 1000));
       exp = (await now()) + 500;
@@ -461,7 +467,7 @@ describe("ClainovaClaims rules", function () {
     });
     it("answers a re-entered call with the guard's own error", async () => {
       const probe = await deploy("ReentrantProbeFixture");
-      const e3 = await deploy("ClainovaClaims", [probe.target, signer.publicKey]);
+      const e3 = await deploy(NAME, [probe.target, signer.publicKey]);
       await wait(probe.mint(sender.address, 100));
       await wait(probe.approve(e3.target, 100));
       const id = await fund(85, 10, exp, sender, e3);
@@ -477,6 +483,148 @@ describe("ClainovaClaims rules", function () {
       await wait(evil.arm(E.ZeroAddress, "0x", true));
       await fund(84, 10, exp, sender, e2);
       assert.equal(await evil.balanceOf(e2.target), 10n);
+    });
+  });
+
+  // Seeded, so a failure replays exactly: INVARIANT_SEED=<seed> npx hardhat test.
+  describe("random sequences (seeded)", () => {
+    const SEED = Number(process.env.INVARIANT_SEED ?? 20261127);
+    const STEPS = Number(process.env.INVARIANT_STEPS ?? 300);
+    function mulberry32(a) {
+      return () => {
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    it(`keeps every invariant over ${STEPS} random fund, claim, refund and time steps (seed ${SEED})`, async function () {
+      this.timeout(600000);
+      const rand = mulberry32(SEED);
+      const int = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1));
+      const pick = (xs) => xs[int(0, xs.length - 1)];
+      const people = accounts.slice(0, 8);
+      const funders = people.slice(0, 4); // hold tokens and have approved the escrow
+      const registered = [1, 4, 5, 6, 7].map((i) => people[i]);
+      for (const w of registered.slice(1)) await wait(registry.register(w.address));
+      const isRegistered = (a) => registered.some((w) => w.address === a.address);
+      const model = []; // { id, sender, salt, amount, expiry, state, recipient }
+      const STATE = { Funded: 1n, Collected: 2n, Refunded: 3n };
+      let nextSalt = 1000;
+      const balances = async () => {
+        const who = [...people.map((w) => w.address), escrow.target];
+        const got = await Promise.all(who.map((a) => token.balanceOf(a)));
+        return new Map(who.map((a, i) => [a, got[i]]));
+      };
+      const reason = async (p) => {
+        try {
+          await wait(p);
+          return null;
+        } catch (e) {
+          return e?.reason ?? String(e?.message ?? e);
+        }
+      };
+      const counts = { fund: 0, claim: 0, refund: 0, time: 0, refused: 0 };
+      let balancesBefore = await balances();
+      for (let step = 0; step < STEPS; step++) {
+        const roll = rand();
+        const expected = new Map(); // address -> delta
+        const move = (a, n) => expected.set(a, (expected.get(a) ?? 0n) + n);
+        let action = "";
+        try {
+          if (roll < 0.3 || model.length === 0) {
+            counts.fund++;
+            const from = pick(funders);
+            const own = model.filter((p) => p.sender === from.address);
+            const dup = own.length > 0 && rand() < 0.1;
+            const s = dup ? pick(own).salt : nextSalt++;
+            const amount = BigInt(rand() < 0.1 ? int(1, 3) : int(1, 1_000_000));
+            const t = (await now()) + 1;
+            const expiry = t + int(60, 2 * DAY);
+            action = `fund salt ${s} amount ${amount} by ${from.address}${dup ? " (duplicate)" : ""}`;
+            await at(t);
+            const got = await reason(escrow.connect(from).fund(salt(s), amount, expiry));
+            if (dup) {
+              assert.equal(got, "Duplicate payment");
+              counts.refused++;
+            } else {
+              assert.equal(got, null);
+              model.push({ id: pid(from.address, salt(s)), sender: from.address, salt: s, amount, expiry, state: STATE.Funded, recipient: E.ZeroAddress });
+              move(from.address, -amount);
+              move(escrow.target, amount);
+            }
+          } else if (roll < 0.6) {
+            counts.claim++;
+            const p = pick(model);
+            const dest = rand() < 0.9 ? pick(registered) : people[pick([0, 2, 3])];
+            const caller = rand() < 0.75 ? dest : pick(people);
+            const base = await now();
+            const deadline = Math.min(p.expiry, base + int(2, DAY));
+            const sig = await attest(p.id, dest.address, deadline);
+            const t = (await now()) + 1;
+            action = `claim ${p.id} for ${dest.address} by ${caller.address} at ${t}, deadline ${deadline}, expiry ${p.expiry}, state ${p.state}`;
+            await at(t);
+            const got = await reason(escrow.connect(caller).claim(p.id, deadline, sig));
+            const want =
+              p.state !== STATE.Funded ? "Payment closed"
+              : !(t < deadline && deadline <= p.expiry) ? "Signature expired"
+              : !isRegistered(caller) ? "Register a possession-proven ML-DSA key"
+              : caller.address !== dest.address ? "Invalid attestation"
+              : null;
+            assert.equal(got, want);
+            if (want === null) {
+              p.state = STATE.Collected;
+              p.recipient = dest.address;
+              move(dest.address, p.amount);
+              move(escrow.target, -p.amount);
+            } else counts.refused++;
+          } else if (roll < 0.8) {
+            counts.refund++;
+            const p = pick(model);
+            const caller = pick(people);
+            let t = (await now()) + 1;
+            if (rand() < 0.3 && p.expiry - 1 > t) t = p.expiry - 1 + int(0, 1); // the boundary second
+            action = `refund ${p.id} by ${caller.address} at ${t}, expiry ${p.expiry}, state ${p.state}`;
+            await at(t);
+            const got = await reason(escrow.connect(caller).refund(p.id));
+            const want = p.state === STATE.Funded && t >= p.expiry ? null : "Refund unavailable";
+            assert.equal(got, want);
+            if (want === null) {
+              p.state = STATE.Refunded;
+              move(p.sender, p.amount);
+              move(escrow.target, -p.amount);
+            } else counts.refused++;
+          } else {
+            counts.time++;
+            const t = (await now()) + int(1, 8 * 3600);
+            action = `advance to ${t}`;
+            await mine(t);
+          }
+          // 1. Every balance moved by exactly what the model expects: a claim pays only
+          //    the attested destination, a refund pays only the original sender.
+          const after = await balances();
+          for (const [a, b] of after) assert.equal(b - balancesBefore.get(a), expected.get(a) ?? 0n, `balance of ${a}`);
+          balancesBefore = after;
+          // 2. The escrow holds exactly the payments still Funded.
+          const open = model.filter((p) => p.state === STATE.Funded).reduce((n, p) => n + p.amount, 0n);
+          assert.equal(after.get(escrow.target), open, "escrow balance");
+          // 3. Every payment's on-chain record matches the model, so none leaves Collected or Refunded.
+          const records = await Promise.all(model.map((p) => escrow.payments(p.id)));
+          for (const [i, p] of model.entries()) {
+            const c = records[i];
+            assert.deepEqual([c.sender, c.state, c.amount, c.recipient, c.expiry], [p.sender, p.state, p.amount, p.recipient, BigInt(p.expiry)], `payment ${p.id}`);
+          }
+        } catch (e) {
+          e.message = `seed ${SEED}, step ${step}: ${action}\n${e.message}`;
+          throw e;
+        }
+      }
+      if (process.env.INVARIANT_VERBOSE) console.log({ ...counts, payments: model.length, collected: model.filter((p) => p.state === STATE.Collected).length, refunded: model.filter((p) => p.state === STATE.Refunded).length });
+      // The sequence must actually exercise each path, or it proves little.
+      const settled = model.filter((p) => p.state !== STATE.Funded);
+      assert.ok(counts.fund > 50 && counts.claim > 50 && counts.refund > 30 && counts.time > 30, JSON.stringify(counts));
+      assert.ok(settled.some((p) => p.state === STATE.Collected) && settled.some((p) => p.state === STATE.Refunded), "both outcomes reached");
+      assert.ok(counts.refused > 30, "refused attempts exercised");
     });
   });
 
