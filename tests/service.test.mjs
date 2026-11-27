@@ -329,3 +329,37 @@ test("a visitor sends exactly one demo payment, resumes it, and cannot reach any
   const off = fixture({ read: async () => ({ state: "draft" }) }, { demo: true });
   await assert.rejects(off.app.send("v1", { sender }), /off/);
 });
+
+// Sealed notes: the service keeps QoreSeal envelopes it cannot open, only for a
+// collected payment, from its own two parties, five each.
+test("sealed notes are stored as envelopes, only after collection and only by the two parties", async () => {
+  const chain = new Map();
+  const live = { read: async (id) => chain.get(id), send: async () => {} };
+  const { app } = fixture(live, { demo: true });
+  const row = await app.create("organiser", {
+    demo: true,
+    amount: "1",
+    note: "Demo",
+    seconds: 2505600,
+    sender: Wallet.createRandom().address,
+    requestKey: randomUUID(),
+  });
+  const envelope = "qoreseal:" + "A".repeat(200);
+  chain.set(row.id, { ...row, state: "funded" });
+  await app.list("organiser");
+  await assert.rejects(app.operatorNote("organiser", row.id, envelope), /once the payment is collected/);
+  chain.set(row.id, { ...row, state: "collected", destination: Wallet.createRandom().address });
+  await app.list("organiser");
+  await assert.rejects(app.operatorNote("organiser", row.id, "plain text the server could read"), /Invalid sealed note/);
+  await assert.rejects(app.operatorNote("organiser", row.id, "qoreseal:" + "A".repeat(6000)), /Invalid sealed note/);
+  await assert.rejects(app.operatorNote("someone else", row.id, envelope), /unavailable/);
+  const { notes } = await app.operatorNote("organiser", row.id, envelope);
+  assert.deepEqual(notes.map((n) => [n.from, n.envelope]), [["organiser", envelope]]);
+  for (let i = 0; i < 4; i++) await app.operatorNote("organiser", row.id, envelope);
+  await assert.rejects(app.operatorNote("organiser", row.id, envelope), /Five notes each/);
+  // Both parties see the thread in their views.
+  const [mine] = (await app.list("organiser")).rows;
+  assert.equal(mine.notes.length, 5);
+  const local = fixture();
+  assert.throws(() => local.app.addNote({ state: "collected" }, "organiser", envelope), /Diana/);
+});
