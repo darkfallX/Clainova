@@ -396,7 +396,7 @@ async function counter() {
             ? "This rehearsal uses a local inbox and test ledger. No SMS is sent."
             : demoSend
             ? "Clainova sends your wallet 1 test fUSD and 0.3 test QOR. Your wallet then funds the escrow on Diana itself. Test tokens have no cash value."
-            : "The wallet funds escrow before Clainova sends the SMS. A new spending window costs 0.05 test QOR, plus registration if needed and EVM fees.") +
+            : "The wallet funds escrow before Clainova sends the SMS. The approval and deposit go in one post-quantum transaction of about 0.09 test QOR, plus 0.05 to register the key the first time.") +
           "</p>" +
           (!local ? walletBox() + (demoSend ? "" : convertChoice()) : "") +
           (local || wallet.current
@@ -465,6 +465,79 @@ function watchCollection(row) {
     }
   }, 5000);
 }
+// Sealed notes between the organiser and the recipient after collection. Each
+// is sealed in this browser with QoreSeal (ML-KEM-1024) to both parties' keys
+// on QoreChain's encryption-key registry; the server stores text it cannot open.
+async function sealedNotes(row, side, post, refresh, checks = 0) {
+  const box = el("#notes");
+  if (!box || local || row.state !== "collected") return;
+  // The keys come from the wallet, so a locked wallet asks for its password first.
+  if (!wallet.current && wallet.saved) {
+    box.innerHTML =
+      '<div class="step"><h3>Sealed notes</h3><p class="helper">Notes between the organiser and the recipient are sealed with ML-KEM-1024. Unlock this browser’s wallet to read and write them.</p><form class="formstack" id="notesUnlock"><div class="field"><label for="notesPw">Wallet password</label><input id="notesPw" type="password" autocomplete="current-password" required minlength="10"></div><button class="secondary">Unlock notes</button></form></div>';
+    on("#notesUnlock", "submit", async () => {
+      await wallet.unlock(el("#notesPw").value);
+      await sealedNotes(row, side, post, refresh, checks);
+    });
+    return;
+  }
+  if (!wallet.current || !wallet.canSeal) return;
+  const other = side === "recipient" ? row.sender : row.destination;
+  const [mine, theirs] = await Promise.all([
+    wallet.kemKeyOf(wallet.current.address).catch(() => null),
+    wallet.kemKeyOf(other).catch(() => null),
+  ]);
+  const them = side === "recipient" ? "the organiser" : "the recipient";
+  const items = (row.notes || [])
+    .map((n) => {
+      const text = wallet.openNote(n.envelope);
+      return (
+        "<li><strong>" +
+        (n.from === side ? "You" : side === "recipient" ? "The organiser" : "The recipient") +
+        "</strong><span>" +
+        (text === null ? "Sealed for another wallet" : esc(text)) +
+        "</span></li>"
+      );
+    })
+    .join("");
+  const last = row.notes?.at(-1);
+  box.innerHTML =
+    '<div class="step"><h3>Sealed notes</h3><p class="helper">A note to ' +
+    them +
+    ", such as a receipt, an event pass or invoice details. It is sealed in this browser with ML-KEM-1024 to both wallets’ keys on QoreChain’s encryption-key registry. Clainova stores only the sealed text and has no key to open it.</p>" +
+    (items ? '<ol class="notes">' + items + "</ol>" : "") +
+    (last
+      ? '<p class="formnote">What Clainova stores for the latest note: <code>' +
+        esc(last.envelope.slice(0, 26)) +
+        "…</code> (" +
+        last.envelope.length.toLocaleString("en") +
+        " characters)</p>"
+      : "") +
+    (!mine
+      ? '<p class="helper">This wallet’s encryption key is not on QoreChain yet.</p>'
+      : !theirs
+        ? '<p class="helper">The other wallet has no encryption key on QoreChain yet, so nothing can be sealed to it.</p>'
+        : '<form class="formstack" id="noteForm"><div class="field"><label for="noteText">Note to ' +
+          them +
+          '</label><textarea id="noteText" required maxlength="800" rows="3"></textarea></div><button class="secondary">Seal and send</button></form>') +
+    "</div>";
+  on("#noteForm", "submit", async () => {
+    const envelope = await wallet.sealNote(el("#noteText").value.trim(), other);
+    const { notes } = await post(envelope);
+    row.notes = notes;
+    await sealedNotes(row, side, post, refresh);
+    status("Note sealed and sent.", 5000);
+  });
+  // The other side's notes appear without a reload, unless a note is being typed.
+  if (refresh && checks < 90)
+    setTimeout(async () => {
+      if (!document.body.contains(box)) return;
+      const fresh = await refresh().catch(() => null);
+      const changed = (fresh?.notes || []).length !== (row.notes || []).length;
+      if (changed && !el("#noteText")?.value) row.notes = fresh.notes;
+      sealedNotes(row, side, post, refresh, checks + 1);
+    }, 8000);
+}
 function issued(row) {
   const done = row.state === "collected";
   // Funding, delivery and collection are separate events; show each truthfully.
@@ -529,6 +602,7 @@ function issued(row) {
         }${row.demo ? "" : '<a class="secondary" href="/ledger">View ledger</a>'}</div>
         ${row.demo ? proof(row) : ""}
         <div id="pq"></div>
+        <div id="notes"></div>
       </section>
       ${receipt(row)}
     </div>`,
@@ -536,7 +610,21 @@ function issued(row) {
   );
   stagger([...document.querySelectorAll(".timeline li")]);
   if (row.demo && !done) watchCollection(row);
-  if (done) postQuantum(row);
+  if (done) {
+    postQuantum(row);
+    sealedNotes(
+      row,
+      "organiser",
+      (envelope) =>
+        row.demo
+          ? api("/api/try/note", { id: row.id, envelope })
+          : api("/api/payments/" + row.id + "/note", { envelope }),
+      async () =>
+        row.demo
+          ? (await api("/api/try/sent", {})).row
+          : (await api("/api/payments")).rows.find((r) => r.id === row.id),
+    ).catch((err) => console.warn("Sealed notes unavailable:", err?.message));
+  }
 }
 // The public transactions behind a demo payment. The explorer opens on mainnet,
 // so the official testnet API is linked as well.
@@ -816,7 +904,7 @@ async function collect() {
               ],
             ]) +
             walletBox() +
-            '<div id="follow"></div><div id="pq"></div>',
+            '<div id="follow"></div><div id="notes"></div><div id="pq"></div>',
           receipt(r),
         ),
       "collected",
@@ -827,6 +915,12 @@ async function collect() {
     }
     bindWallet(collect);
     postQuantum(r);
+    sealedNotes(
+      r,
+      "recipient",
+      (envelope) => invite("note", { envelope }),
+      () => invite(),
+    ).catch((err) => console.warn("Sealed notes unavailable:", err?.message));
     if (wallet.current?.address === r.destination) {
       const balance = await wallet.balance();
       el("#follow").innerHTML =
@@ -853,6 +947,36 @@ async function collect() {
           status("Transfer confirmed.", 6000);
         });
       });
+      // Fees from the payment itself: a recipient who keeps 0.01 fUSD as QOR
+      // no longer depends on the sponsor for later transactions.
+      if (!local && !wallet.external && balance >= 10000) {
+        const gas = Number(await wallet.gas()) / 1e18;
+        // The swap's own fee is 0.08 test QOR. Right after collecting, the
+        // sponsor's grant still covers it, so this step comes before sending.
+        const enough = gas >= 0.082,
+          covered = gas >= 0.5;
+        el("#follow").insertAdjacentHTML(
+          "afterbegin",
+          '<div class="step" id="feeStep"><h3>Pay your own fees</h3><p class="helper">This wallet holds ' +
+            gas.toFixed(2) +
+            (covered
+              ? " test QOR, enough to pay its own fees for many transactions.</p></div>"
+              : " test QOR for fees. Swap 0.01 test fUSD for about " +
+            "1 test QOR in QoreChain’s fUSD/QOR pool, and it pays its own fees from then on. One post-quantum transaction, with a 3% price limit." +
+                (enough ? "" : " The swap itself needs 0.08 test QOR, which this wallet no longer has.") +
+                "</p>" +
+                (enough ? action("swapFees", "Swap 0.01 fUSD for fees") : "") +
+                "</div>"),
+        );
+        click("#swapFees", async () => {
+          const { hash } = await wallet.swapForFees();
+          await collect();
+          status(
+            "Swapped. This wallet now pays its own fees. Transaction " + hash.slice(0, 10) + "…",
+            8000,
+          );
+        });
+      }
     }
     return;
   }
@@ -903,10 +1027,10 @@ async function collect() {
         (!local
           ? '<p class="code">' +
             wallet.qor() +
-            '</p><p class="helper">Setup registers your key if needed, then opens a window for this escrow. ' +
+            '</p><p class="helper">Your key is registered the first time. Collecting is then one transaction signed with it, so no window is opened. ' +
             (cfg.sponsored
               ? "Clainova sends this wallet the test QOR for these fees when you collect.</p>"
-              : 'Each native approval costs 0.05 test QOR. Collection also uses EVM gas.</p><div class="actions"><a href="https://dashboard.qorechain.io/faucet" target="_blank" rel="noreferrer">Get test QOR from the faucet</a></div>')
+              : 'Registration costs 0.05 test QOR and collecting about 0.14.</p><div class="actions"><a href="https://dashboard.qorechain.io/faucet" target="_blank" rel="noreferrer">Get test QOR from the faucet</a></div>')
           : "") +
         '<div class="actions">' +
         action("claim", "Collect " + money(r.amount) + " test fUSD", true) +
@@ -1019,6 +1143,7 @@ function tryDemo() {
       (!cfg.demoSend || cfg.demoPool > 0
         ? action("take", cfg.demoSend ? "Only collect" : "Take a test payment", !cfg.demoSend)
         : "") +
+      '<a class="secondary" href="/try/steal">Try to steal a wallet</a>' +
       "</div></div>",
     "try",
   );
@@ -1026,6 +1151,88 @@ function tryDemo() {
     const { link } = await api("/api/try", {});
     location.href = "/c/" + link;
   });
+}
+// Public bait wallets: their classical keys are published, and the page shows
+// Diana refusing every transaction made with that key alone.
+async function steal() {
+  if (!cfg.demo)
+    return main(title("Not available here.", "This server has no public test wallets."), "try");
+  const qor = (uqor) => (uqor == null ? "—" : (uqor / 1e6).toFixed(2));
+  function draw(v) {
+    const latest = v.rounds[0];
+    main(
+      title(
+        "Try to steal it.",
+        "These three wallets hold test fUSD on Diana, and their private keys are below.",
+      ) +
+        '<div class="copy"><p>Each is the secp256k1 key an ordinary Ethereum wallet uses; MetaMask can import it. On QoreChain that key is not enough. Every transaction from these accounts must also carry an ML-DSA-87 signature from the post-quantum key registered to it, and nobody holds that key: the recovery phrase that makes it was never stored. Test tokens have no cash value.</p></div>' +
+        v.wallets
+          .map(
+            (w, i) =>
+              '<section class="step bait"><h3>Wallet ' +
+              (i + 1) +
+              "</h3>" +
+              summary([
+                ["Holds", (w.fusd == null ? "—" : money(w.fusd)) + " test fUSD · " + qor(w.uqor) + " test QOR"],
+                ["Address", short(w.address)],
+              ]) +
+              '<p class="helper">Private key (secp256k1)</p><p class="code" id="key' +
+              i +
+              '">' +
+              esc(w.privateKey) +
+              "</p>" +
+              action("copy" + i, "Copy key") +
+              '<p class="formnote">' +
+              esc(w.account) +
+              "</p></section>",
+          )
+          .join("") +
+        '<section class="step"><h3>The six attacks, against the live network</h3><p class="helper">Clainova runs them every hour with the published key and an ML-DSA-87 key of the attacker’s own, and shows Diana’s answer word for word.</p>' +
+        (latest
+          ? '<ol class="notes">' +
+            latest.results
+              .map(
+                (r) =>
+                  "<li><strong>" +
+                  esc(r.attack) +
+                  ' · <span class="' +
+                  (r.refused === true ? "pq-ok" : "pq-bad") +
+                  '">' +
+                  (r.refused === true ? "Refused" : r.refused === false ? "Accepted" : "No answer") +
+                  "</span></strong><span>" +
+                  esc(r.reason) +
+                  "</span></li>",
+              )
+              .join("") +
+            "</ol>" +
+            '<p class="formnote">Latest round against ' +
+            esc(short(latest.wallet)) +
+            ", " +
+            new Date(latest.at * 1000).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" }) +
+            ". Rounds since this server started: " +
+            v.total +
+            ". Transactions accepted: " +
+            v.accepted +
+            ".</p>"
+          : '<p class="helper">The first round runs a minute after the server starts.</p>') +
+        '<div class="actions">' +
+        action("attackNow", "Run the six attacks now", true) +
+        "</div></section>",
+      "steal",
+    );
+    v.wallets.forEach((w, i) =>
+      click("#copy" + i, async () => {
+        await navigator.clipboard.writeText(w.privateKey);
+        status("Key copied.", 3000);
+      }),
+    );
+    click("#attackNow", async () => {
+      status("Attacking on Diana… about 20 seconds.", 25000);
+      draw(await api("/api/bait", {}));
+      status("Round finished.", 4000);
+    });
+  }
+  draw(await api("/api/bait"));
 }
 function legal() {
   const privacy = currentPath === "/privacy";
@@ -1038,7 +1245,7 @@ function legal() {
           : "Clainova is a festival testnet application.",
       ) +
       (privacy
-        ? "<h2>Phone numbers and codes</h2><p>The verifier stores the number encrypted and uses it to send the invitation and one-time codes. The ledger shows only its last four digits. Africa’s Talking receives the number and message in SMS mode. The rehearsal inbox stays on the local machine.</p><h2>Public payment records</h2><p>Escrow transactions expose addresses, amounts and timing. The private invitation link, note, number and code stay off-chain. The operator can read notes and decrypt phone numbers. Ask the organiser who invited you to remove the off-chain record after settlement. Public chain records persist.</p><h2>Wallet storage</h2><p>Clainova creates your wallet in your browser. Your password encrypts it and its backup on this device. Save a copy before clearing browser data. Nobody can reset a lost password. Browser cookies keep organiser sessions separate.</p>"
+        ? "<h2>Phone numbers and codes</h2><p>The verifier stores the number encrypted and uses it to send the invitation and one-time codes. The ledger shows only its last four digits. Africa’s Talking receives the number and message in SMS mode. The rehearsal inbox stays on the local machine.</p><h2>Public payment records</h2><p>Escrow transactions expose addresses, amounts and timing. The private invitation link, note, number and code stay off-chain. The operator can read the organiser’s note and decrypt phone numbers. Sealed notes after collection are different: they are encrypted in your browser with ML-KEM-1024 to both wallets’ keys on QoreChain’s encryption-key registry, and the operator stores them without any key to open them. Ask the organiser who invited you to remove the off-chain record after settlement. Public chain records persist.</p><h2>Wallet storage</h2><p>Clainova creates your wallet in your browser. Your password encrypts it and its backup on this device. Save a copy before clearing browser data. Nobody can reset a lost password. Browser cookies keep organiser sessions separate.</p>"
         : "<h2>Test assets</h2><p>Only use festival test tokens. They have no cash value. Use a dedicated test wallet, send invitations only to people expecting payment, and confirm the phone number before issuing one.</p><h2>Collection and refunds</h2><p>A verification code establishes current access to the number. A single verifier authorises the receiving wallet. After expiry, anyone may call the escrow refund function. Only the original sender receives the refund.</p><h2>Rehearsal mode</h2><p>The local ledger and inbox are for practice. Testnet mode uses external services and requires network fees in test QOR. SMS delivery and transaction inclusion can take time.</p>") +
       "</article>",
     "legal" + currentPath,
@@ -1062,6 +1269,7 @@ async function start() {
   // would only lead to a sign-in page. Rehearsal keeps it for the demo.
   if ((link || currentPath.startsWith("/try")) && !local) el(".bar nav").hidden = true;
   if (currentPath === "/try") return tryDemo();
+  if (currentPath === "/try/steal") return steal();
   if (link) return collect();
   if (currentPath === "/ledger") return ledger();
   if (currentPath === "/privacy" || currentPath === "/terms") return legal();
