@@ -1,6 +1,6 @@
 # Clainova security review · 24 November 2026
 
-**Reviewer:** Claude Code (Anthropic, Claude Opus 5.5). This is an AI code review. It is not a human security review and not a substitute for the two QCAI audit rounds, which are in [AUDIT.md](AUDIT.md).
+**Reviewer:** Claude Code (Anthropic, Claude Opus 5.5). This is an AI code review. It is not a human security review and not a substitute for the QCAI audit rounds, which are in [AUDIT.md](AUDIT.md).
 
 **Scope:** `contracts/ClainovaClaims.sol` and the Node service (`server/*.mjs`). The review was done by reading the code and checking each finding against its code path. The browser wallet code was out of scope except where it calls the service.
 
