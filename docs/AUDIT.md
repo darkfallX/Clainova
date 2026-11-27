@@ -1,11 +1,12 @@
 # Audit and post-quantum design of ClainovaClaims
 
-The Post-Quantum dApp track asks for a two-stage QoreChain AI audit. Both stages use the official auditor at `dashboard.qorechain.io/audit`. Automatic detection read stage 1 as `ethereum`, so stage 2 uses the same EVM/Solidity setting.
+The Post-Quantum dApp track asks for a two-stage QoreChain AI audit. Every stage uses the official auditor at `dashboard.qorechain.io/audit`. Automatic detection read each source as `ethereum`, the EVM/Solidity setting.
 
 | Stage | Date | Source | Score | Report |
 |---|---|---|---|---|
 | 1 | 24 Nov 2026 | v1, deployed at `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822` | 65/100, risk HIGH, 6 findings | [PDF](audit/qcai-stage-1-2026-11-24.pdf) |
 | 2 | 25 Nov 2026 | v2, deployed at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6` | 85/100, risk MEDIUM, 4 findings | [PDF](audit/qcai-stage-2-2026-11-25.pdf) |
+| 3 | 27 Nov 2026 | v3 with the guardian, `contracts/ClainovaClaimsV3.sol` at commit `a24cb56`, not yet deployed | 75/100, risk MEDIUM, 4 findings | [PDF](audit/qcai-stage-3-2026-11-27.pdf) |
 
 Stage 2 reviewed the exact v2 source (SHA-256 `8e428a194ac9287030b3411b0624a63215e530a30d575b56900341ca11059bd0` with LF line endings). The contract has not changed since v2 was deployed. Only the CosmWasm setting produces a quantum readiness rating, so an EVM report shows "Not scored".
 
@@ -52,5 +53,18 @@ The two HIGH findings from stage 1, reentrancy and unchecked return values, are 
 | Front-running protection (INFO) | Not a problem. The auditor confirms that signatures are bound to `msg.sender`. | Tests "rejects wrong destination and forged attestations" and "binds chain, claim, contract and deadline". |
 
 The immutable key is also a real limit: a compromised verifier seed can't be rotated. That is recorded in the [security review](security-review.md) and is the main trust assumption.
+
+## Stage 3 findings and responses (v3)
+
+v3 is v2 plus one offline ML-DSA-87 guardian key that can replace the verifier key or freeze claims, by a signature checked with `pqcVerify`. Stage 3 scored lower than stage 2, 75 against 85. Its HIGH finding is the guardian functions being callable by anyone, which is the design: a signature, not a sender, is the authority. On analysis, none of the four findings needs a contract change. The line numbers in the report don't match the source (the guardian functions are at lines 128 and 137), so each entry below names the code it describes.
+
+| Finding (auditor severity) | Analysis | Evidence |
+|---|---|---|
+| Missing access control on `rotateVerifier` and `freeze` (HIGH) | By design. Both functions do nothing without an ML-DSA-87 signature by the guardian key, checked on-chain with `pqcVerify`. The signed bytes bind a purpose tag, the chain, this contract, a nonce that must equal `guardianNonce`, and for a rotation the new key's hash, so a submitter can't change what the signature does or use it twice. Limiting who may submit would mean an account check, and an account is held by a classical key, which would put an ECDSA key back in the guardian path. Neither function can move funds. | Tests "rotates the verifier with a guardian signature, and old attestations stop working at once" (submitted by an unrelated account), "refuses a rotation signed by anyone but the guardian, including the verifier", "uses each guardian signature once: a replay or a skipped nonce is refused", "binds guardian messages to this chain, this contract and their purpose", "gives the guardian no way to move funds: its calls never touch the token" |
+| Potential overflow in expiry calculation (MEDIUM) | False positive, as in stages 1 and 2. `MAX_PERIOD` is a `constant` (30 days), so nothing can change it, and Solidity 0.8 checks the addition. A validator can shift `block.timestamp` by seconds, not by a month. | Test "accepts an expiry of exactly 30 days and rejects past, longer and maximum values", run against v2 and v3 |
+| Unbounded loop potential in key validation (LOW) | False positive. `_validKey` has no loop: it requires exactly 2592 bytes and compares one hash with the hash of zeros. It runs at most twice per call. | Test "refuses an empty key, the wrong length, or the guardian's own key as the new verifier" |
+| Guardian nonce management (INFO) | Not a problem. The auditor confirms that the nonce stops replays. | Test "uses each guardian signature once: a replay or a skipped nonce is refused"; the mutation check breaks the nonce check and the increment, and both are caught |
+
+v3 has 100% line and branch coverage, and all 13 of its broken versions in `scripts/mutation-check.mjs` are caught (see the README).
 
 v2 deployment receipts: [diana-deployment-v2.json](../submission/diana-deployment-v2.json). v1 stays on-chain unchanged and is no longer used by the app.
