@@ -26,6 +26,7 @@
     "ethers": "^6.16.0"
   },
   "devDependencies": {
+    "@qorechain/qorex-wallet-mock": "0.1.0",
     "axe-core": "4.10.3",
     "esbuild": "^0.25.0",
     "hardhat": "2.26.5",
