@@ -2,9 +2,13 @@ import fs from "node:fs";
 import { ContractFactory, Wallet, JsonRpcProvider } from "ethers";
 import { authority, TEST_RPC } from "../server/network.mjs";
 import { FEST } from "../server/common.mjs";
+// Deploys ClainovaClaimsV3. The guardian's public key comes from the seed file
+// that scripts/guardian.mjs keeps on the operator's machine, never from the host.
+import { guardianKey } from "./guardian.mjs";
 const { VERIFIER_SEED, DEPLOYER_PRIVATE_KEY } = process.env;
 if (!/^[0-9a-f]{64}$/i.test(VERIFIER_SEED || "") || !DEPLOYER_PRIVATE_KEY)
   throw Error("Set VERIFIER_SEED and DEPLOYER_PRIVATE_KEY for Diana first.");
+const guardian = guardianKey().publicKey;
 const rpc = new JsonRpcProvider(process.env.RPC_URL || TEST_RPC);
 if ((await rpc.getNetwork()).chainId !== 9800n)
   throw Error("Diana chain 9800 required.");
@@ -17,6 +21,7 @@ const factory = new ContractFactory(
 const instance = await factory.deploy(
   FEST,
   authority(Buffer.from(VERIFIER_SEED, "hex")).publicKey,
+  guardian,
 );
 await instance.waitForDeployment();
 console.log("ESCROW_ADDRESS=" + (await instance.getAddress()));
