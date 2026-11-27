@@ -149,6 +149,9 @@ export function service({ store, authority, live, config, clock = now }) {
     } = row;
     return {
       evidence: row.evidence || {},
+      // Sealed with QoreSeal to keys on the chain registry. The service stores
+      // them and cannot open them.
+      notes: row.notes || [],
       observed:
         row.observed?.wallet === row.destination
           ? row.observed?.status
@@ -491,6 +494,32 @@ export function service({ store, authority, live, config, clock = now }) {
         row = store.get(row.id);
       }
       return this.evidence(row, kind, hash);
+    },
+    // A sealed note after collection, from either side. Only the envelope is
+    // stored: it is ML-KEM-1024 ciphertext for keys this service never holds.
+    addNote(row, from, envelope) {
+      requireThat(!local, "Sealed notes need Diana's key registry.", 409);
+      requireThat(row.state === "collected", "Notes open once the payment is collected.", 409);
+      requireThat(
+        typeof envelope === "string" &&
+          envelope.length <= 6000 &&
+          /^qoreseal:[A-Za-z0-9_-]+$/.test(envelope),
+        "Invalid sealed note.",
+      );
+      const notes = row.notes || [];
+      requireThat(
+        notes.filter((n) => n.from === from).length < 5,
+        "Five notes each per payment.",
+        429,
+      );
+      store.patch(row.id, { notes: [...notes, { from, envelope, at: clock() }] });
+      return { notes: store.get(row.id).notes };
+    },
+    async recipientNote(link, envelope) {
+      return this.addNote(await sync(fromLink(link)), "recipient", envelope);
+    },
+    async operatorNote(owner, id, envelope) {
+      return this.addNote(await sync(mine(owner, id)), "organiser", envelope);
     },
     async operatorEvidence(owner, id, kind, hash) {
       requireThat(
