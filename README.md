@@ -9,7 +9,7 @@
 - **No classical-only transaction anywhere.** Funding, collecting, refunding and spending are each one hybrid-signed native transaction carrying `MsgCrossVMCall`. Diana checks the wallet's ML-DSA-87 signature on every one, the escrow sees the wallet as `msg.sender`, and no EVM window is ever opened. A stolen secp256k1 key alone moves nothing: [try to steal one](https://clainova.onrender.com/try/steal), where three wallets' keys are published and Diana's refusals are shown live.
 - **The recipient pays their own fees.** One tap swaps 0.01 test fUSD for about 1 test QOR in QoreChain's native fUSD/QOR pool (`MsgSwapExactIn`, pool 2, with a 3% price limit), so the wallet stops depending on the sponsor.
 - **Notes the server cannot read.** After collection, the organiser and the recipient can exchange notes (a receipt, an event pass, invoice details) sealed with QoreSeal's ML-KEM-1024 to both wallets' keys on QoreChain's encryption-key registry. Each wallet registers its key inside its claim or deposit transaction.
-- **QoreX without a command line.** A QoreX account signs the same cross-VM transactions through QoreX's `signAndBroadcast`.
+- **QoreX without a command line.** A QoreX account collects with its own native account, signing the same cross-VM transactions through QoreX's `signAndBroadcast`. Tested on Diana on 27 November with QoreChain's official QoreX test double (`@qorechain/qorex-wallet-mock`, current profile); not yet with the extension itself.
 
 | Five new wallets each, no QOR, 25 November 2026, Diana | Could spend the money |
 |---|---|
@@ -117,7 +117,7 @@ Browser tests launch a separate service on port 4283 with a temporary database a
 
 | Component | Responsibility |
 |---|---|
-| Browser | Review the slip, generate a coin-60 wallet, encrypt its recoverable mnemonic in an ethers keystore, sign locally and track progress. An existing QoreX account can be paired with a compatible EVM signer. |
+| Browser | Review the slip, generate a coin-60 wallet, encrypt its recoverable mnemonic in an ethers keystore, sign locally and track progress. An existing QoreX account connects through its native lane and is paid at that account's own address. QoreX builds without `signAndBroadcast` can be paired with a compatible EVM signer. |
 | Node and SQLite | Authenticate the single organiser, persist a payment before funding, track delivery and claims, cap verification attempts, encrypt phone records, issue short-lived attestations and reconcile Diana state. |
 | ClainovaClaims | Hold one immutable ERC-20 asset. A deposit ID commits to the sender and a random salt. A valid claim needs the registered possession-proven ML-DSA-87 destination, the verifier signature and the recipient as transaction sender. Anyone can trigger an expired refund to the deposit sender. |
 | Native lane | QoreSign builds the proof of possession. Every escrow and token call is a `MsgCrossVMCall` inside one hybrid-signed transaction: an approval and its deposit together, a claim (with the ML-KEM-1024 key registration the first time), a refund or a transfer. The server relays only those calls, to this escrow and token. Older QoreX builds without `signAndBroadcast` still use a scoped window: at most two calls, the required contracts only, 120 blocks and 250,000 uqor. Payments before 27 November used that window path, and the runs listed above record it. |
