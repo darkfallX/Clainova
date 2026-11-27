@@ -69,7 +69,7 @@ The code appears on the page instead of going to a phone, and the page says so. 
 
 **Delivery status, 25 November 2026.** ClainovaClaims v2 is deployed on Diana at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6`. It returned the expected festival fUSD address and ML-DSA-87 verifier key. v2 adds a reentrancy guard and checked token calls after QCAI audit round 1. The first deployment, `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822`, stays on-chain unchanged and is no longer used. [v2 receipts](submission/diana-deployment-v2.json) · [v1 receipts](submission/diana-deployment.json) · [Audit and PQ design](docs/AUDIT.md) · [Security review](docs/security-review.md)
 
-Both QCAI audit stages are complete: 65/100 with six findings on v1, then 85/100 with four on v2, none needing a contract change. The reports and the response to each finding are in [docs/AUDIT.md](docs/AUDIT.md). Carrier delivery to a handset is pending.
+Both QCAI audit stages are complete: 65/100 with six findings on v1, then 85/100 with four on v2, none needing a contract change. A third audit on 27 November covered v3, which adds a post-quantum guardian for the verifier key and is not yet deployed: 75/100 with four findings, none needing a change. Its HIGH finding is that anyone may submit a guardian-signed rotation, which is the design. The reports and the response to each finding are in [docs/AUDIT.md](docs/AUDIT.md). Carrier delivery to a handset is pending.
 
 [Pocket Fold desktop](submission/pocket-fold/desktop.png) · [Mobile invitation](submission/pocket-fold/phone-invitation.png) · [Pocket Fold motion](submission/pocket-fold/motion.mp4) · [Earlier end-to-end rehearsal](submission/rehearsal.mp4) · [Design decisions](docs/design-direction.md) · [AI usage](AI_USAGE.md)
 
