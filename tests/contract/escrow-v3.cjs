@@ -178,6 +178,36 @@ const E = require("ethers");
     assert.equal(await contract.frozen(), false);
   });
 
+  it("refuses a rotation or a freeze re-entered by the token during a payout", async () => {
+    const key = "0x" + "88".repeat(2592);
+    for (const call of ["rotateVerifier", "freeze"]) {
+      const probe = await deploy("ReentrantProbeFixture");
+      const escrow = await deploy("ClainovaClaimsV3", [probe.target, verifier.publicKey, guardian.publicKey]);
+      await (await probe.mint(sender.address, 100)).wait();
+      await (await probe.approve(escrow.target, 100)).wait();
+      const now = (await rpc.getBlock("latest")).timestamp;
+      const salt = E.toBeHex(++seq, 32);
+      await (await escrow.fund(salt, 10, now + 600)).wait();
+      const id = E.keccak256(E.AbiCoder.defaultAbiCoder().encode(["address", "bytes32"], [sender.address, salt]));
+      const deadline = now + 300;
+      const bytes = await escrow.message(id, recipient.address, deadline);
+      const att = verifier.sign(bytes);
+      await allow(verifier.publicKey, att, bytes);
+      // A valid guardian signature, so only the guard can refuse it.
+      const payload =
+        call === "rotateVerifier"
+          ? escrow.interface.encodeFunctionData(call, [key, 0, await guardianSigned(await escrow.rotateMessage(key, 0))])
+          : escrow.interface.encodeFunctionData(call, [0, await guardianSigned(await escrow.freezeMessage(0))]);
+      await (await probe.arm(escrow.target, payload)).wait();
+      await (await escrow.connect(recipient).claim(id, deadline, att)).wait();
+      assert.equal(await probe.tried(), true);
+      assert.equal(await probe.lastError(), escrow.interface.encodeErrorResult("Error", ["Reentrant call"]));
+      assert.equal(await escrow.guardianNonce(), 0n);
+      assert.equal(await escrow.verifierKey(), verifier.publicKey);
+      assert.equal(await escrow.frozen(), false);
+    }
+  });
+
   it("gives the guardian no way to move funds: its calls never touch the token", async () => {
     const { id } = await fund();
     const escrowed = await token.balanceOf(contract.target);
