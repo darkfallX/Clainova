@@ -1,6 +1,17 @@
 import { addressFromBytes } from "@qorechain/qoresign";
-import { Interface, getBytes, formatEther } from "ethers";
+import {
+  AbiCoder,
+  Interface,
+  getAddress,
+  getBytes,
+  formatEther,
+  keccak256,
+} from "ethers";
 import { FEST, requireThat } from "./common.mjs";
+import { chainRead, nativeSearch } from "./native.mjs";
+const qor = (address) => addressFromBytes(getBytes(address)).bech32;
+const CROSS_VM = "/qorechain.crossvm.v1.MsgCrossVMCall";
+const tokenAbi = new Interface(["function transfer(address,uint256)"]);
 const rest = "https://api-testnet.qore.host";
 const transfer = new Interface([
   "event Transfer(address indexed from,address indexed to,uint256 value)",
@@ -41,6 +52,10 @@ async function nativeHash(hash) {
 // before reporting them. Diana's RPC serves at most 10,000 blocks per query.
 const EVENTS = { funding: "Funded", collection: "Collected", refund: "Refunded" };
 export async function findEvidence(rpc, escrow, row, kind) {
+  const found = await findNativeEvidence(rpc, escrow, row, kind).catch(
+    () => null,
+  );
+  if (found) return found;
   const topic = escrow.interface.getEvent(EVENTS[kind]).topicHash;
   const head = await rpc.getBlockNumber();
   const floor = row.evidence?.funding?.block || Math.max(0, head - 400000);
@@ -56,6 +71,8 @@ export async function findEvidence(rpc, escrow, row, kind) {
   return null;
 }
 export async function readEvidence(rpc, escrow, row, kind, hash) {
+  if (/^[0-9a-fA-F]{64}$/.test(hash))
+    return readNativeEvidence(rpc, escrow, row, kind, hash.toUpperCase());
   requireThat(/^0x[0-9a-fA-F]{64}$/.test(hash), "Invalid transaction hash.");
   const receipt = await rpc.getTransactionReceipt(hash);
   requireThat(
@@ -116,4 +133,118 @@ export async function readEvidence(rpc, escrow, row, kind, hash) {
     payer: receipt.from,
     feeQor: formatEther(receipt.fee),
   };
+}
+
+// A cross-VM settlement is a native transaction whose MsgCrossVMCall ran the
+// escrow or token call as the signer's own 0x address. Diana records no EVM
+// log for it, so the receipt is checked from the signed message itself, its
+// crossvm_response event, and the escrow's state now.
+export async function readNativeEvidence(rpc, escrow, row, kind, hash) {
+  const { tx, tx_response: r, pending } = await chainRead("receipt", hash);
+  requireThat(
+    !pending && r && Number(r.code) === 0,
+    "Transaction is awaiting successful confirmation.",
+    409,
+  );
+  const executed = new Set(
+    (r.events || [])
+      .filter(
+        (e) =>
+          e.type === "crossvm_response" &&
+          e.attributes.some((a) => a.key === "status" && a.value === "executed"),
+      )
+      .map((e) => e.attributes.find((a) => a.key === "msg_index")?.value),
+  );
+  const calls = (tx?.body?.messages || []).flatMap((m, i) => {
+    if (m["@type"] !== CROSS_VM || m.target_vm !== "evm" || !executed.has(String(i)))
+      return [];
+    try {
+      const target = getAddress(m.target_contract),
+        data = "0x" + Buffer.from(m.payload, "base64").toString("hex");
+      const abi =
+        target === getAddress(escrow.target)
+          ? escrow.interface
+          : target === getAddress(FEST)
+            ? tokenAbi
+            : null;
+      const call = abi?.parseTransaction({ data });
+      return call ? [{ sender: m.sender, target, call }] : [];
+    } catch {
+      return [];
+    }
+  });
+  const payment = await escrow.payments(row.id);
+  const state = Number(payment.state);
+  let payer;
+  if (kind === "transfer") {
+    const previous = row.evidence?.collection;
+    const spend = calls.find(
+      (c) =>
+        c.call.name === "transfer" &&
+        c.sender === qor(row.destination) &&
+        getAddress(c.call.args[0]) !== getAddress(row.destination) &&
+        c.call.args[1] > 0n,
+    );
+    requireThat(
+      row.state === "collected" &&
+        previous &&
+        Number(r.height) >= previous.block &&
+        spend,
+      "Transfer does not match this recipient.",
+    );
+    payer = row.destination;
+  } else {
+    const name = { funding: "fund", collection: "claim", refund: "refund" }[kind];
+    requireThat(name, "Unknown payment event.");
+    const match = calls.find((c) => {
+      if (c.call.name !== name) return false;
+      if (name === "fund")
+        return (
+          keccak256(
+            AbiCoder.defaultAbiCoder().encode(
+              ["address", "bytes32"],
+              [payment.sender, c.call.args[0]],
+            ),
+          ) === row.id && c.sender === qor(payment.sender)
+        );
+      if (name === "claim")
+        return c.call.args[0] === row.id && c.sender === qor(payment.recipient);
+      return c.call.args[0] === row.id;
+    });
+    requireThat(
+      match &&
+        { fund: state >= 1, claim: state === 2, refund: state === 3 }[name],
+      "Receipt does not match this invitation.",
+    );
+    payer = name === "claim" ? payment.recipient : name === "fund" ? payment.sender : null;
+  }
+  const fee = (tx.auth_info?.fee?.amount || []).find((c) => c.denom === "uqor");
+  return {
+    hash,
+    native: hash,
+    crossVm: true,
+    block: Number(r.height),
+    payer,
+    feeQor: formatEther(BigInt(fee?.amount || 0) * 1000000000000n),
+  };
+}
+async function findNativeEvidence(rpc, escrow, row, kind) {
+  const payment = await escrow.payments(row.id);
+  const who = { funding: payment.sender, collection: payment.recipient }[kind];
+  if (!who || /^0x0{40}$/i.test(who)) return null;
+  const { tx_responses: found = [] } = await nativeSearch(
+    "crossvm_request.target_contract='" +
+      getAddress(escrow.target) +
+      "' AND crossvm_request.sender='" +
+      qor(who) +
+      "'",
+  );
+  for (const r of found) {
+    try {
+      return await readNativeEvidence(rpc, escrow, row, kind, r.txhash);
+    } catch {
+      // Not this payment; keep looking.
+    }
+  }
+  return null;
 }
