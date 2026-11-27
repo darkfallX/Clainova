@@ -1,6 +1,7 @@
-import { getBytes, encodeBase64 } from "ethers";
+import { getAddress, getBytes, encodeBase64 } from "ethers";
 import {
   addressFromBytes,
+  parseAddress,
   buildRegisterPqKeyMessage,
   classicalKeyFromPrivate,
   deriveCanonicalPqKey,
@@ -27,6 +28,8 @@ export const nativeGas = {
 export const nativeFee = (gas) => String(gas / 8n);
 export const qorAddress = (address) =>
   addressFromBytes(getBytes(address)).bech32;
+// The EVM address of a qor1 account: the same 20 bytes.
+export const evmAddress = (account) => getAddress(parseAddress(account).hex);
 export function nativeKeys(wallet) {
   const account = qorAddress(wallet.address),
     classicalKey = classicalKeyFromPrivate(
