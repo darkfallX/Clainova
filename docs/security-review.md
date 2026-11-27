@@ -40,3 +40,14 @@ Claude Code's notes on its own changes. This is not an independent review.
 - The private invitation link is a bearer secret for viewing the receipt. Collection still needs the code sent to the phone. Don't log request URLs. `cloudflared` doesn't log paths at its default level.
 - A quick-tunnel URL changes on every restart. Restart the service with the new `PUBLIC_ORIGIN` so the SMS links stay valid.
 - Keep `.env` and `.data/` private and back them up together.
+
+## Update, 27 November 2026: post-quantum transactions for every escrow and token call
+
+Claude Code's notes on its own change. This is not an independent review.
+
+| Severity | Area | Change |
+|---|---|---|
+| Medium (improvement) | Browser wallet | Funding, collection, refunds and spends no longer send ECDSA-only EVM transactions inside a 120-block window. Each is a `MsgCrossVMCall` inside one hybrid-signed native transaction. Diana checks the wallet's ML-DSA-87 signature on every one, and the EVM sees the wallet's own address as `msg.sender`, so the audited contract is unchanged. A wallet that only ever uses Clainova never opens an EVM window, and a stolen secp256k1 key alone cannot move its funds. An approval and its deposit are two calls in one transaction, so they succeed or fail together. Proven on Diana on 27 November: transfer, approve-and-fund, claim and refund, with the wallet's window record still empty. |
+| Low | `server/native.mjs` relay | The relay now also forwards cross-VM calls, but only to this deployment's escrow and token, and only `claim`, `refund`, `fund`, `approve` (for the escrow, and only before `fund`) and `transfer`. Queued calls, attached funds, other contracts and other functions are refused before Diana. Each transaction is still signed by its own account. |
+| Low | Receipts | Diana records no EVM log for a cross-VM call. A receipt is now checked from the signed payload, the `crossvm_response` event and the escrow's state, so a funding transaction can't pass as a collection and a receipt can't be moved to another payment. Unreported receipts are found through the native transaction index. |
+| Info | QoreX accounts | QoreX signs its own EVM transactions and refuses window requests from dApps, so a QoreX account keeps the window path. |
