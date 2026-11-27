@@ -7,6 +7,7 @@ import zlib from "node:zlib";
 import { openStore } from "./store.mjs";
 import { authority, liveAdapters } from "./network.mjs";
 import { smsChannel } from "./sms.mjs";
+import { createBait } from "./bait.mjs";
 import { service, equal } from "./service.mjs";
 import { secret, now, requireThat } from "./common.mjs";
 
@@ -59,6 +60,9 @@ const app = service({
     contract: local ? undefined : env.ESCROW_ADDRESS,
   },
 });
+// Public bait wallets for /try/steal, attacked every hour on the live network.
+const bait = !local && app.demo ? createBait() : null;
+bait?.start();
 const staticFiles = {
   "/pocket-fold.webp": ["pocket-fold.webp", "image/webp"],
   "/styles.css": ["styles.css", "text/css"],
@@ -198,7 +202,7 @@ async function handle(req, res) {
       return;
     }
     const page =
-      ["/", "/try", "/try/send", "/ledger", "/privacy", "/terms"].includes(pathname) ||
+      ["/", "/try", "/try/send", "/try/steal", "/ledger", "/privacy", "/terms"].includes(pathname) ||
       /^\/c\/[\da-f]{64}\.[\da-f]{64}$/.test(pathname);
     // Split bundles have hashed names that change with every build.
     const chunk =
@@ -314,7 +318,25 @@ async function handle(req, res) {
     else if (parts[2] === "send") data = await app.send(who, b);
     else if (parts[2] === "evidence")
       data = await app.operatorEvidence("visitor:" + who, b.id, "funding", b.hash);
+    else if (parts[2] === "note")
+      data = await app.operatorNote("visitor:" + who, b.id, b.envelope);
   } else if (route === "GET /api/health") data = await app.health();
+  else if (route === "GET /api/bait") {
+    requireThat(bait, "Page unavailable.", 404);
+    data = await bait.view();
+  } else if (route === "POST /api/bait") {
+    requireThat(bait, "Page unavailable.", 404);
+    // One attack round every two minutes for everyone, so the button can't be
+    // used to flood Diana with refused transactions.
+    requireThat(
+      store.limit("bait", 1, 120, now()) &&
+        store.limit("bait:" + store.sign(clientAddress(req)), 10, 86400, now()),
+      "An attack round just ran. Try again in two minutes.",
+      429,
+    );
+    await bait.round();
+    data = await bait.view();
+  }
   else if (route === "POST /api/login") {
     requireThat(
       !local && store.limit("login:" + store.sign(clientAddress(req)), 8, 600, now()),
@@ -330,7 +352,10 @@ async function handle(req, res) {
     cookie(res, "organiser", t + "." + store.sign("operator:" + t), 14400);
     data = { ok: true };
   } else if (!local && parts[1] === "native") {
-    data = await nativeRequest(parts[2], parts[3], b, req.method);
+    data = await nativeRequest(parts[2], parts[3], b, req.method, {
+      escrow: app.contract,
+      token: app.token,
+    });
   } else if (parts[1] === "payments") {
     requireThat(owner, "Sign in as organiser.", 401);
     if (req.method === "GET" && parts.length === 2)
@@ -343,6 +368,8 @@ async function handle(req, res) {
       data = await app.operatorEvidence(owner, parts[2], b.kind, b.hash);
     else if (req.method === "POST" && action === "refund")
       data = await app.refund(owner, parts[2]);
+    else if (req.method === "POST" && action === "note")
+      data = await app.operatorNote(owner, parts[2], b.envelope);
   } else if (parts[1] === "invite") {
     const link = parts[2];
     if (req.method === "GET" && !action) data = await app.open(link);
@@ -358,6 +385,7 @@ async function handle(req, res) {
       if (action === "sponsor")
         data = await app.sponsor(link, b.token, b.destination);
       if (action === "settle") data = await app.settle(link, b);
+      if (action === "note") data = await app.recipientNote(link, b.envelope);
     }
   } else if (local && route === "GET /api/balance")
     data = { balance: app.localBalance(parts[2]) };
