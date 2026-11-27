@@ -268,3 +268,11 @@ test("an ML-KEM-1024 registration may precede a claim or a deposit, and nothing 
   assert.equal(ok([kem()]), false, "alone");
   assert.equal(ok([x(claim), kem()]), false, "after the call");
 });
+
+test("a QoreX qor1 account maps to the EVM address with the same 20 bytes", async () => {
+  const { evmAddress, qorAddress } = await import("../web/native.js");
+  const w = Wallet.createRandom();
+  assert.equal(evmAddress(qorAddress(w.address)), w.address);
+  assert.equal(evmAddress("qor1xs23xt6p24eyy6t0uxymr3c3aegtjy2g3qh2ke"), "0x3415132F41557242696fe189B1C711EE50b91148");
+  assert.throws(() => evmAddress("cosmos1xs23xt6p24eyy6t0uxymr3c3aegtjy2g3qh2ke"));
+});
