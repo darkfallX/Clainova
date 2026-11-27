@@ -6,7 +6,7 @@ The Post-Quantum dApp track asks for a two-stage QoreChain AI audit. Every stage
 |---|---|---|---|---|
 | 1 | 24 Nov 2026 | v1, deployed at `0x72fdfB887a73Ab6aBBEB1602F9d16dB29604d822` | 65/100, risk HIGH, 6 findings | [PDF](audit/qcai-stage-1-2026-11-24.pdf) |
 | 2 | 25 Nov 2026 | v2, deployed at `0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6` | 85/100, risk MEDIUM, 4 findings | [PDF](audit/qcai-stage-2-2026-11-25.pdf) |
-| 3 | 27 Nov 2026 | v3 with the guardian, `contracts/ClainovaClaimsV3.sol` at commit `a24cb56`, not yet deployed | 75/100, risk MEDIUM, 4 findings | [PDF](audit/qcai-stage-3-2026-11-27.pdf) |
+| 3 | 27 Nov 2026 | v3 with the guardian, `contracts/ClainovaClaimsV3.sol` at commit `a24cb56`, deployed at `0xEEc16Da3AD0C4187EBdeF81d91e3b6706159aDd1` | 75/100, risk MEDIUM, 4 findings | [PDF](audit/qcai-stage-3-2026-11-27.pdf) |
 
 Stage 2 reviewed the exact v2 source (SHA-256 `8e428a194ac9287030b3411b0624a63215e530a30d575b56900341ca11059bd0` with LF line endings). The contract has not changed since v2 was deployed. Only the CosmWasm setting produces a quantum readiness rating, so an EVM report shows "Not scored".
 
@@ -24,7 +24,7 @@ The Hardhat tests use doubles for the two precompiles. Valid claims also ran aga
 
 **Design limit.** `claim` checks the verifier's ML-DSA-87 signature and the recipient's key status in the contract. The recipient's own ML-DSA-87 signature is checked by Diana on the hybrid transaction that carries the claim (before 27 November, on the window that admitted it), not inside `claim`. The contract is unchanged since v2.
 
-**Trust limit.** One verifier key decides which wallet belongs to a phone number. A compromised verifier seed could authorise the wrong wallet for a payment that is still funded. See the [security review](security-review.md).
+**Trust limit.** One verifier key decides which wallet belongs to a phone number. A compromised verifier seed could authorise the wrong wallet for a payment that is still funded. Since v3, an offline guardian key can freeze claims and replace the verifier key, but only once someone notices the compromise: until the guardian acts, the old key still works. See the [security review](security-review.md).
 
 **Phone-number limit.** Whoever receives the code sent to the number can collect. Someone who takes over the SIM, or is given the number after the carrier recycles it, gets that code too, and the contract can't tell them from the recipient: it pays whichever wallet the verifier attests. The server binds the first attested wallet to the invitation permanently (`server/service.mjs`, `attest`), so a takeover after that point can't redirect the payment. A takeover before it can collect. Payments expire within `MAX_PERIOD` (30 days), after which anyone can refund them to the sender, and the public demo moves small test amounts. See finding 3 of the [security review](security-review.md) and the README's incident table.
 
@@ -52,7 +52,7 @@ The two HIGH findings from stage 1, reentrancy and unchecked return values, are 
 | Unbounded storage growth (LOW) | Accepted. Mapping lookups cost the same at any size, and settled entries must stay so an ID can't be funded twice. | Test "preserves escrow balances on duplicate and failed deposits". |
 | Front-running protection (INFO) | Not a problem. The auditor confirms that signatures are bound to `msg.sender`. | Tests "rejects wrong destination and forged attestations" and "binds chain, claim, contract and deadline". |
 
-The immutable key is also a real limit: a compromised verifier seed can't be rotated. That is recorded in the [security review](security-review.md) and is the main trust assumption.
+The immutable key was also a real limit: in v2 a compromised verifier seed can't be rotated. v3 answers it with the guardian (stage 3 below). The verifier stays the main trust assumption, recorded in the [security review](security-review.md).
 
 ## Stage 3 findings and responses (v3)
 
