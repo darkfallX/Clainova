@@ -1,0 +1,46 @@
+{
+  "network": "qorechain-diana",
+  "chainId": 9800,
+  "contract": "ClainovaClaimsV3",
+  "version": "v3 · v2 plus a post-quantum guardian for the verifier key; QCAI stage 3",
+  "address": "0xEEc16Da3AD0C4187EBdeF81d91e3b6706159aDd1",
+  "supersedes": "0x5fD1e7D06Eb60AEdDe19B4bFcEA3242F293b65F6",
+  "source": "contracts/ClainovaClaimsV3.sol at commit a24cb56 (the source QCAI stage 3 reviewed)",
+  "deployer": "0x2F3AF6B4BAccf904Ea23F2600f8f1E10b221F6Ec",
+  "token": "0x97143B771D34ddb9130b807b135Ae675A5a963CA",
+  "verifierKeyKeccak256": "0xa51ec3ee5d81484c7840618d2057a5cfd9b2bb4a6ac47e759bbedfafb83168c2",
+  "guardianKeyKeccak256": "0x31cb51acc97ec9f72c60cb9374a863126b198744e8a08ab768b780f57751c663",
+  "runtimeCodeKeccak256": "0x33dd969765c0b1aff8d2dd2bf8911fffc832352af2a5fa13a0ef2e57b6518c37",
+  "runtimeCheck": "Identical to the solc 0.8.28 build of the source except the two immutable slots holding the token address.",
+  "registration": "reused from v1 (possession-proven key already registered)",
+  "window": {
+    "hash": "C3A5AB7964FCDF077BD93EA350784F77C49C9E7284317AB9734E2D44A8DA3772",
+    "height": 10851208
+  },
+  "deployment": {
+    "hash": "0x81c886debf034048046d691f6db738cb4d8d72b91e2fb93d39ddcd16d14670ad",
+    "block": 10851212,
+    "blockHash": "0x9505c4458ee0390c78bbec127f55dbb2471390cb139418eb22ec6f5a1b05a2fc",
+    "timestamp": "2026-11-27T13:21:12.000Z",
+    "gasLimit": 5600000,
+    "gasUsed": 5280955,
+    "feeTestQor": "0.5941074375",
+    "note": "Diana's RPC refuses gas estimates above 5,000,000, so the limit was set by hand from a local measurement (5,281,195; v2 matched Diana to 0.005%). The transaction itself was accepted."
+  },
+  "guardianCheck": {
+    "note": "Freeze, then rotate to the same verifier key, both signed by the guardian's ML-DSA-87 key and checked by pqcVerify (0x0a01) on Diana. A claim() call answered 'Claims frozen' between them and 'Payment closed' (unknown id) after. The verifier key never changed.",
+    "freeze": {
+      "hash": "24461513859F47166D0B52947DDD8902CC2E40E292CBE43643920846310E92E8",
+      "height": 10851742,
+      "timestamp": "2026-11-27T13:33:48Z",
+      "code": 0
+    },
+    "rotateToSameKey": {
+      "hash": "8282A50066BAD41D2FD22710286EBBE80DC324069B0D799C093E0FADAB930DA1",
+      "height": 10851752,
+      "timestamp": "2026-11-27T13:34:03Z",
+      "code": 0
+    },
+    "guardianNonceAfter": 2
+  }
+}
