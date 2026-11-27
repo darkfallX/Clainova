@@ -1,0 +1,37 @@
+{
+  "created": "2026-11-27T10:06:34.563Z",
+  "network": "qorechain-diana",
+  "note": "Public test wallets. Each holds 1 test fUSD and some test QOR under a registered ML-DSA-87 key whose recovery phrase was never stored. Their secp256k1 private keys are published on purpose.",
+  "wallets": [
+    {
+      "address": "0x53991425b9E75CAf3Aa86251ABBCA00755968d04",
+      "account": "qor12wv3gfdeuaw27w4gvfg6h09qqa2edrgyqksv4t",
+      "secp256k1PrivateKey": "0xd2d0abdd9697c116a55adc13718609e05f02feebb05dab8bb309d25faab5c780",
+      "setup": {
+        "funded": "602966E50D035B72DA1B69E2716B04EFC553B1375C1F3DD3FAE277089E45D7A6",
+        "registered": "C9505426BC0F18B0101174722FFFBDA592FD40931F69697D746E92DE61AB1E38",
+        "converted": "1D5F00DE224AF41EB387560EC5E703D0F3776264F34DCD418131166F0DEB4EE0"
+      }
+    },
+    {
+      "address": "0x9B5aEbC0e8B5730f7433c3F8b91502351FD77c0A",
+      "account": "qor1nddwhs8gk4es7apnc0utj9gzx50awlq285j9w6",
+      "secp256k1PrivateKey": "0x13ea9f0e7b977109d9737c4733a1a75216c2316269de152f536d16cfd645a5cc",
+      "setup": {
+        "funded": "6C04B7F04AFC3CEEEA326943D4BFD80B3CCB254A79008E705667D3524D008596",
+        "registered": "DEC9B8120D935264C59AA15487F38FBEB315B9489CF249FC805FB5FD41165270",
+        "converted": "4ABDB6B8D4BE1A5429974178D9A15BF98BB4CD722681BD7488659EE4FF053939"
+      }
+    },
+    {
+      "address": "0x0bAa443aa10275Ae0cBFFc3cfd37326b11c1fa54",
+      "account": "qor1pw4ygw4pqf66ur9lls706dejdvgur7j52026tg",
+      "secp256k1PrivateKey": "0x488235be221282840ea987191b0e75aec22b28792727d0a006e62f9863fb097e",
+      "setup": {
+        "funded": "EAA9057D28B66A5BE479E5EEAEEB22A820C8DACDA0F62B6F625786A611827530",
+        "registered": "812C478CBC112A5209A0A78FCE75D1821E9143F1638B7A3391243BF8DF60AEDA",
+        "converted": "2344968FBB46AF11A3CD4FB3D4AC5373F9F06704032A2F3F402BCC70EEABA7A7"
+      }
+    }
+  ]
+}
