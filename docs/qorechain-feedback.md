@@ -43,3 +43,9 @@ Notes for the QoreChain team from building Clainova, 25 November 2026. Each one 
 - **What we found:** the [account abstraction guide](https://docs.qorechain.io/developer-guide/account-abstraction) says `MsgUpdateSpendingRules` limits linked keys and session keys acting through `MsgExecuteEVM` or `MsgExecuteCosmos`, never the account owner's own key. The permission schema on Diana (`/qorechain/abstractaccount/v1/permission_schema`) has no entry for `MsgCrossVMCall`, so a linked key cannot make the cross-VM calls Clainova uses either. We dropped the feature rather than fake the cap in the app.
 - **Why it matters:** first-time users hold their keys in a browser, and a daily cap on the owner's own outgoing value would be the simplest protection for them. Linked keys are classical (secp256k1 or Ed25519), so moving spending to one would also weaken the post-quantum story.
 - **Question:** could a spending rule optionally bind the owner's own key, with a timelock to raise it, signed with the owner's ML-DSA-87 key?
+
+## 7. A QoreX account's EVM address is a different account
+
+- **See it:** connect QoreX to a dApp and compare `window.qorex.evm`'s `eth_requestAccounts` with `window.qorex.native.getKey("qorechain-diana").bech32Address`.
+- **Result:** they are different accounts. QoreX derives the native account with coin type 118 and the EVM-lane account with coin type 60. Only the [mock's README](https://www.npmjs.com/package/@qorechain/qorex-wallet-mock) says so. Clainova first took the EVM address and converted it to `qor1`, so its sponsor funded an account QoreX never signs for, and QoreX refused: "does not exist on qorechain-diana yet. Fund it first." A dApp using MetaMask-style code for QoreX makes the same mistake.
+- **Suggested fix:** state the two derivations in the qorex-integrations README and the QoreX docs, and say which address a dApp should pay when it calls the EVM through `MsgCrossVMCall` (the native account's own 20 bytes).
