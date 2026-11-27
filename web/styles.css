@@ -1689,3 +1689,58 @@ dialog[open]::backdrop {
 .issued:has(.pq) {
   align-items: start;
 }
+
+/* Sealed notes */
+.notes {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.notes li {
+  display: grid;
+  gap: 3px;
+  padding: 11px 13px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow-wrap: break-word;
+}
+.notes strong {
+  font-size: 13px;
+  color: var(--muted);
+}
+#notes:not(:empty) {
+  margin-top: 32px;
+}
+#notes code {
+  font: 500 12px/1.5 ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+.field textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 13px;
+  border: 1px solid var(--field);
+  border-radius: 9px;
+  background: var(--card);
+  font: inherit;
+  color: inherit;
+  resize: vertical;
+  transition:
+    border-color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.field textarea:hover {
+  border-color: #6e6f80;
+}
+.field textarea:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 4px #2939ae26;
+}
+
+/* Try to steal it */
+.bait .code {
+  margin-top: 6px;
+}
