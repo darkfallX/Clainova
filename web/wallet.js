@@ -1,6 +1,8 @@
 import {
   HDNodeWallet,
   Contract,
+  Interface,
+  decodeBase64,
   BrowserProvider,
   JsonRpcProvider,
   getAddress,
@@ -8,7 +10,30 @@ import {
   parseUnits,
 } from "ethers";
 import { keystore } from "./keystore.js";
-import { qorAddress, openWindow, convertFusd } from "./native.js";
+import {
+  buildRegisterKemKeyMessage,
+  deriveSealKeys,
+  envelopeFromText,
+  envelopeToText,
+  open as openEnvelope,
+  seal as sealEnvelope,
+} from "@qorechain/qoreseal";
+import {
+  QORECHAIN_TESTNET_CHAIN_ID,
+  getQorexNative,
+  hasCapability,
+  qorexSignAndBroadcast,
+} from "@qorechain/qorex-types";
+import {
+  qorAddress,
+  openWindow,
+  convertFusd,
+  callEvm,
+  prepareKey,
+  swapForFees,
+  crossVmMsg,
+  crossVmGas,
+} from "./native.js";
 const erc20 = [
   "function approve(address,uint256) returns(bool)",
   "function balanceOf(address) view returns(uint256)",
@@ -21,6 +46,11 @@ const escrow = [
   "function refund(bytes32)",
 ];
 const rpc = "https://evm-testnet.qore.host";
+// Sealed notes: ML-KEM-1024 envelopes made with QoreSeal, to keys published
+// on QoreChain's encryption-key registry.
+const NOTE = { chainId: "qorechain-diana", purpose: "clainova-note-v1" };
+const tokenCalls = new Interface(erc20),
+  escrowCalls = new Interface(escrow);
 // The demo sender keeps its wallet in its own slot, so the same browser can also
 // be the recipient with a different wallet.
 export function walletTools(cfg, api, progress, slot = "") {
@@ -99,6 +129,74 @@ export function walletTools(cfg, api, progress, slot = "") {
     external = true;
     return wallet.address;
   }
+  // QoreX signs and broadcasts native messages itself, adding the hybrid
+  // ML-DSA-87 layer with the account's registered key. With it, a QoreX account
+  // makes the same cross-VM calls as a Clainova wallet, with no window and no
+  // command line. Older QoreX builds without signAndBroadcast keep the window.
+  const qorexNative = () => {
+    const native = external ? getQorexNative() : undefined;
+    return hasCapability(native, "signAndBroadcast") ? native : null;
+  };
+  async function viaQorex(native, calls, kind, before = []) {
+    progress("Approve the post-quantum transaction in QoreX…");
+    const account = qorAddress(wallet.address);
+    const result = await qorexSignAndBroadcast(
+      {
+        chainId: QORECHAIN_TESTNET_CHAIN_ID,
+        messages: [
+          ...before,
+          ...calls.map(({ to, data }) => crossVmMsg(account, to, data)),
+        ],
+        gasLimit: Number(crossVmGas[kind]),
+      },
+      { native },
+    );
+    if (result.code !== 0)
+      throw Error("Diana refused the transaction (code " + result.code + ").");
+    const hash = result.txHash.replace(/^0x/, "").toUpperCase();
+    for (let i = 0; i < 30; i++) {
+      const r = await api("/api/native/receipt/" + hash);
+      if (r.tx_response) {
+        if (Number(r.tx_response.code) !== 0)
+          throw Error("The transaction failed. " + r.tx_response.raw_log);
+        return { hash, native: true };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    throw Error("Confirmation is pending for " + hash + ". Check the explorer, then retry.");
+  }
+  // The wallet's ML-KEM-1024 keys come from its recovery phrase, so a restored
+  // backup opens the same notes. QoreX keeps its phrase, and refuses this
+  // registration from websites, so QoreX accounts have no sealed notes.
+  let sealKeys;
+  const ownSealKeys = () =>
+    (sealKeys ||= deriveSealKeys({ mnemonic: wallet.mnemonic.phrase }));
+  async function kemKeyOf(address) {
+    const r = await api("/api/native/kem/" + qorAddress(address));
+    return r.found ? decodeBase64(r.key.public_key) : null;
+  }
+  // The registration rides in the claim or deposit transaction, the first time.
+  async function kemRegistration() {
+    if (local || external) return [];
+    const mine = ownSealKeys().mlkemPublicKey;
+    const listed = await kemKeyOf(wallet.address).catch(() => null);
+    if (listed && listed.length === mine.length && listed.every((b, i) => b === mine[i]))
+      return [];
+    return [
+      buildRegisterKemKeyMessage({
+        sender: qorAddress(wallet.address),
+        mlkemPublicKey: mine,
+      }),
+    ];
+  }
+  // One entry point for every escrow and token call: QoreX's signer, else the
+  // Clainova wallet's own hybrid transaction.
+  async function call(calls, kind, conversion, withKem = false) {
+    const native = qorexNative();
+    if (native) return viaQorex(native, calls, kind, conversion ? [conversion] : []);
+    const before = withKem ? await kemRegistration() : [];
+    return callEvm(wallet, api, progress, calls, kind, conversion, before);
+  }
   async function scope(targets, conversion) {
     if (!external)
       return openWindow(wallet, targets, api, progress, conversion);
@@ -144,7 +242,7 @@ export function walletTools(cfg, api, progress, slot = "") {
       const token = new Contract(cfg.token, erc20, wallet);
       const shortfall =
         BigInt(row.amount) - (await token.balanceOf(wallet.address));
-      if (shortfall > 0n && (external || !allowConversion))
+      if (shortfall > 0n && ((external && !qorexNative()) || !allowConversion))
         throw Error(
           "Insufficient ERC-20 test fUSD. Enable faucet conversion or fund your ERC-20 balance.",
         );
@@ -160,6 +258,35 @@ export function walletTools(cfg, api, progress, slot = "") {
       const approval =
         (await token.allowance(wallet.address, cfg.contract)) <
         BigInt(row.amount);
+      if (!external || qorexNative()) {
+        progress("Approving and funding in one post-quantum transaction…");
+        return call(
+          [
+            ...(approval
+              ? [
+                  {
+                    to: cfg.token,
+                    data: tokenCalls.encodeFunctionData("approve", [
+                      cfg.contract,
+                      row.amount,
+                    ]),
+                  },
+                ]
+              : []),
+            {
+              to: cfg.contract,
+              data: escrowCalls.encodeFunctionData("fund", [
+                row.salt,
+                row.amount,
+                row.expiry,
+              ]),
+            },
+          ],
+          "fund",
+          conversion,
+          true,
+        );
+      }
       await scope(
         approval ? [cfg.token, cfg.contract] : [cfg.contract],
         conversion,
@@ -178,9 +305,29 @@ export function walletTools(cfg, api, progress, slot = "") {
       );
     },
     async prepare() {
-      if (!local) await scope([cfg.contract]);
+      if (local || qorexNative()) return;
+      if (external) return scope([cfg.contract]);
+      return prepareKey(wallet, api, progress);
     },
     async claim(row, a) {
+      if (!local && (!external || qorexNative())) {
+        progress("Collecting in one post-quantum transaction…");
+        return call(
+          [
+            {
+              to: cfg.contract,
+              data: escrowCalls.encodeFunctionData("claim", [
+                row.id,
+                a.deadline,
+                a.signature,
+              ]),
+            },
+          ],
+          "claim",
+          undefined,
+          true,
+        );
+      }
       return confirm(
         new Contract(cfg.contract, escrow, wallet).claim(
           row.id,
@@ -190,6 +337,11 @@ export function walletTools(cfg, api, progress, slot = "") {
       );
     },
     async refund(row) {
+      if (!local && (!external || qorexNative()))
+        return call(
+          [{ to: cfg.contract, data: escrowCalls.encodeFunctionData("refund", [row.id]) }],
+          "refund",
+        );
       await scope([cfg.contract]);
       return confirm(new Contract(cfg.contract, escrow, wallet).refund(row.id));
     },
@@ -203,6 +355,35 @@ export function walletTools(cfg, api, progress, slot = "") {
       throw Error("The gas top-up is still confirming. Wait a moment, then retry.");
     },
     qor: () => qorAddress(wallet.address),
+    // Sealed notes need a Clainova wallet whose key is on the registry.
+    get canSeal() {
+      return !local && !external && !!wallet?.mnemonic;
+    },
+    kemKeyOf,
+    // Seals to the other party and to this wallet, so both can read the thread.
+    async sealNote(text, to) {
+      const theirs = await kemKeyOf(to);
+      if (!theirs) throw Error("The other wallet has no encryption key on QoreChain yet.");
+      const envelope = sealEnvelope({
+        ...NOTE,
+        recipients: [{ mlkemPublicKey: theirs }, { mlkemPublicKey: ownSealKeys().mlkemPublicKey }],
+        plaintext: new TextEncoder().encode(text),
+        mode: "mlkem",
+      });
+      return envelopeToText(envelope);
+    },
+    openNote(text) {
+      try {
+        return new TextDecoder().decode(
+          openEnvelope({ ...NOTE, envelope: envelopeFromText(text), keys: ownSealKeys() }),
+        );
+      } catch {
+        return null;
+      }
+    },
+    // 0.01 test fUSD by default, swapped for QOR in QoreChain's own pool.
+    swapForFees: (amount = 10000n) =>
+      swapForFees(wallet, api, progress, cfg.token, amount),
     sign: (payload) => wallet.signMessage(getBytes(payload)),
     balance: async () =>
       local
@@ -217,6 +398,13 @@ export function walletTools(cfg, api, progress, slot = "") {
       const amount = parseUnits(value, 6);
       if (amount <= 0n || amount > 10000n * 1000000n)
         throw Error("Enter a positive amount up to 10,000 test fUSD.");
+      if (!local && (!external || qorexNative())) {
+        progress("Sending in one post-quantum transaction…");
+        return call(
+          [{ to: cfg.token, data: tokenCalls.encodeFunctionData("transfer", [to, amount]) }],
+          "transfer",
+        );
+      }
       if (!local) {
         await scope([cfg.token]);
         return confirm(
