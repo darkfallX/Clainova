@@ -3,7 +3,6 @@ import {
   Contract,
   Interface,
   decodeBase64,
-  BrowserProvider,
   JsonRpcProvider,
   VoidSigner,
   getAddress,
@@ -20,20 +19,17 @@ import {
   seal as sealEnvelope,
 } from "@qorechain/qoreseal";
 import {
-  QORECHAIN_TESTNET_CHAIN_ID,
-  getQorexNative,
-  hasCapability,
-  qorexSignAndBroadcast,
+  QORECHAIN_TESTNET_EVM_CHAIN_ID,
+  QOREX_DOWNLOAD_URLS,
+  discoverQorexEip1193,
 } from "@qorechain/qorex-types";
 import {
   qorAddress,
-  evmAddress,
   openWindow,
   convertFusd,
   callEvm,
   prepareKey,
   swapForFees,
-  crossVmMsg,
   crossVmGas,
 } from "./native.js";
 const erc20 = [
@@ -113,71 +109,54 @@ export function walletTools(cfg, api, progress, slot = "") {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
+  // QoreX signs Clainova's contract calls on its EVM lane. Its approval shows
+  // the decoded call and opens a one-transaction EVM window for that contract,
+  // signed with the account's ML-DSA-87 key on the native lane. QoreX refuses
+  // MsgCrossVMCall, which it cannot display, and windows opened by a site, so
+  // QoreX accounts do not use the cross-VM path of Clainova's own wallets.
+  // Only an Ethereum-style (coin 60) QoreX account can send on the EVM lane.
+  let qorex;
   async function connect() {
-    // A QoreX that signs and broadcasts native transactions holds the account:
-    // its qor1 address, whose EVM address is the same 20 bytes, is the wallet.
-    // QoreX derives that account with coin type 118 and its EVM-lane account
-    // with coin type 60, so the two differ and the EVM-lane one is not used.
-    const native = getQorexNative();
-    if (hasCapability(native, "signAndBroadcast")) {
-      await native.enable(QORECHAIN_TESTNET_CHAIN_ID);
-      const key = await native.getKey(QORECHAIN_TESTNET_CHAIN_ID);
-      wallet = new VoidSigner(evmAddress(key.bech32Address), provider);
-      external = true;
-      return wallet.address;
-    }
-    const q = window.qorex?.evm;
-    if (!q) throw Error("Open QoreX on Diana or create a Clainova wallet.");
-    if (BigInt(await q.request({ method: "eth_chainId" })) !== 9800n)
+    // Found by its EIP-6963 announcement, as QoreX asks; QoreChain's test
+    // double announces under another name and is reached through window.qorex.
+    const q = (await discoverQorexEip1193()) || window.qorex?.evm;
+    if (!q)
+      throw Error("QoreX is not installed in this browser. Get it at " + QOREX_DOWNLOAD_URLS.chrome + " or create a Clainova wallet.");
+    if (BigInt(await q.request({ method: "eth_chainId" })) !== BigInt(QORECHAIN_TESTNET_EVM_CHAIN_ID))
       throw Error("Select Diana testnet inside QoreX.");
     const [account] = await q.request({ method: "eth_requestAccounts" });
-    const evm = window.ethereum || q;
-    const browser = new BrowserProvider(evm);
-    if ((await browser.getNetwork()).chainId !== 9800n)
-      throw Error("Select Diana (9800) in the EVM wallet.");
-    wallet = await browser.getSigner();
-    if (wallet.address !== getAddress(account)) {
-      wallet = null;
-      throw Error("Select the same coin-60 account in both wallets.");
-    }
+    if (!account) throw Error("Choose an account in QoreX, then connect again.");
+    // Reads, gas and receipts go through Clainova's own Diana connection.
+    wallet = new VoidSigner(getAddress(account), provider);
+    qorex = q;
     external = true;
     return wallet.address;
   }
-  // QoreX signs and broadcasts native messages itself, adding the hybrid
-  // ML-DSA-87 layer with the account's registered key. With it, a QoreX account
-  // makes the same cross-VM calls as a Clainova wallet, with no window and no
-  // command line. Older QoreX builds without signAndBroadcast keep the window.
-  const qorexNative = () => {
-    const native = external ? getQorexNative() : undefined;
-    return hasCapability(native, "signAndBroadcast") ? native : null;
-  };
-  async function viaQorex(native, calls, kind, before = []) {
-    progress("Approve the post-quantum transaction in QoreX…");
-    const account = qorAddress(wallet.address);
-    const result = await qorexSignAndBroadcast(
-      {
-        chainId: QORECHAIN_TESTNET_CHAIN_ID,
-        messages: [
-          ...before,
-          ...calls.map(({ to, data }) => crossVmMsg(account, to, data)),
-        ],
-        gasLimit: Number(crossVmGas[kind]),
-      },
-      { native },
-    );
-    if (result.code !== 0)
-      throw Error("Diana refused the transaction (code " + result.code + ").");
-    const hash = result.txHash.replace(/^0x/, "").toUpperCase();
-    for (let i = 0; i < 30; i++) {
-      const r = await api("/api/native/receipt/" + hash);
-      if (r.tx_response) {
-        if (Number(r.tx_response.code) !== 0)
-          throw Error("The transaction failed. " + r.tx_response.raw_log);
-        return { hash, native: true };
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  async function viaQorex(to, data, kind) {
+    const from = wallet.address;
+    let gas;
+    try {
+      gas = ((await provider.estimateGas({ from, to, data })) * 13n) / 10n;
+    } catch {
+      gas = crossVmGas[kind];
     }
-    throw Error("Confirmation is pending for " + hash + ". Check the explorer, then retry.");
+    progress("Approve in QoreX. It opens a one-transaction window for this contract…");
+    let hash;
+    try {
+      hash = await qorex.request({
+        method: "eth_sendTransaction",
+        params: [{ from, to, data, gas: "0x" + gas.toString(16), chainId: "0x2648" }],
+      });
+    } catch (err) {
+      const text = String(err?.message || err);
+      if (/coin.?60|ethereum-style/i.test(text))
+        throw Error("QoreX sends contract calls only from an Ethereum-style account. In QoreX, add or select one, then connect again. (" + text + ")");
+      throw err;
+    }
+    progress("Waiting for confirmation… " + hash);
+    const r = await provider.waitForTransaction(hash, 1, 120000);
+    if (r?.status !== 1) throw Error("The transaction did not settle.");
+    return r;
   }
   // The wallet's ML-KEM-1024 keys come from its recovery phrase, so a restored
   // backup opens the same notes. QoreX keeps its phrase, and refuses this
@@ -203,35 +182,13 @@ export function walletTools(cfg, api, progress, slot = "") {
       }),
     ];
   }
-  // One entry point for every escrow and token call: QoreX's signer, else the
-  // Clainova wallet's own hybrid transaction.
+  // Every escrow and token call from a Clainova wallet: one hybrid transaction.
   async function call(calls, kind, conversion, withKem = false) {
-    const native = qorexNative();
-    if (native) return viaQorex(native, calls, kind, conversion ? [conversion] : []);
     const before = withKem ? await kemRegistration() : [];
     return callEvm(wallet, api, progress, calls, kind, conversion, before);
   }
-  async function scope(targets, conversion) {
-    if (!external)
-      return openWindow(wallet, targets, api, progress, conversion);
-    const state = await api("/api/native/window/" + qorAddress(wallet.address));
-    const allowed = (state.allowed_targets || []).map((x) => x.toLowerCase());
-    if (
-      !state.live ||
-      Number(state.remaining_txs) < targets.length ||
-      Number(state.max_txs) > 2 ||
-      Number(state.remaining_blocks) > 120 ||
-      allowed.length !== targets.length ||
-      !targets.every((t) => allowed.includes(t.toLowerCase()))
-    )
-      throw Error(
-        "Open a 120-block window with " +
-          targets.length +
-          " transaction(s), limited to " +
-          targets.join(", ") +
-          ". See the wallet setup in the README.",
-      );
-  }
+  const scope = (targets, conversion) =>
+    openWindow(wallet, targets, api, progress, conversion);
   async function confirm(tx) {
     const sent = await tx;
     progress("Waiting for confirmation… " + sent.hash);
@@ -256,7 +213,7 @@ export function walletTools(cfg, api, progress, slot = "") {
       const token = new Contract(cfg.token, erc20, wallet);
       const shortfall =
         BigInt(row.amount) - (await token.balanceOf(wallet.address));
-      if (shortfall > 0n && ((external && !qorexNative()) || !allowConversion))
+      if (shortfall > 0n && (external || !allowConversion))
         throw Error(
           "Insufficient ERC-20 test fUSD. Enable faucet conversion or fund your ERC-20 balance.",
         );
@@ -272,7 +229,7 @@ export function walletTools(cfg, api, progress, slot = "") {
       const approval =
         (await token.allowance(wallet.address, cfg.contract)) <
         BigInt(row.amount);
-      if (!external || qorexNative()) {
+      if (!external) {
         progress("Approving and funding in one post-quantum transaction…");
         return call(
           [
@@ -301,30 +258,20 @@ export function walletTools(cfg, api, progress, slot = "") {
           true,
         );
       }
-      await scope(
-        approval ? [cfg.token, cfg.contract] : [cfg.contract],
-        conversion,
-      );
+      // QoreX: two approvals, each opening a window for its one contract.
       if (approval) {
         progress("Approving the exact payment amount…");
-        await confirm(token.approve(cfg.contract, row.amount));
+        await viaQorex(cfg.token, tokenCalls.encodeFunctionData("approve", [cfg.contract, row.amount]), "transfer");
       }
       progress("Funding escrow…");
-      return confirm(
-        new Contract(cfg.contract, escrow, wallet).fund(
-          row.salt,
-          row.amount,
-          row.expiry,
-        ),
-      );
+      return viaQorex(cfg.contract, escrowCalls.encodeFunctionData("fund", [row.salt, row.amount, row.expiry]), "fund");
     },
     async prepare() {
-      if (local || qorexNative()) return;
-      if (external) return scope([cfg.contract]);
+      if (local || external) return;
       return prepareKey(wallet, api, progress);
     },
     async claim(row, a) {
-      if (!local && (!external || qorexNative())) {
+      if (!local && !external) {
         progress("Collecting in one post-quantum transaction…");
         return call(
           [
@@ -342,20 +289,20 @@ export function walletTools(cfg, api, progress, slot = "") {
           true,
         );
       }
-      return confirm(
-        new Contract(cfg.contract, escrow, wallet).claim(
-          row.id,
-          a.deadline,
-          a.signature,
-        ),
+      return viaQorex(
+        cfg.contract,
+        escrowCalls.encodeFunctionData("claim", [row.id, a.deadline, a.signature]),
+        "claim",
       );
     },
     async refund(row) {
-      if (!local && (!external || qorexNative()))
+      if (!local && !external)
         return call(
           [{ to: cfg.contract, data: escrowCalls.encodeFunctionData("refund", [row.id]) }],
           "refund",
         );
+      if (external)
+        return viaQorex(cfg.contract, escrowCalls.encodeFunctionData("refund", [row.id]), "refund");
       await scope([cfg.contract]);
       return confirm(new Contract(cfg.contract, escrow, wallet).refund(row.id));
     },
@@ -412,19 +359,15 @@ export function walletTools(cfg, api, progress, slot = "") {
       const amount = parseUnits(value, 6);
       if (amount <= 0n || amount > 10000n * 1000000n)
         throw Error("Enter a positive amount up to 10,000 test fUSD.");
-      if (!local && (!external || qorexNative())) {
+      if (!local && !external) {
         progress("Sending in one post-quantum transaction…");
         return call(
           [{ to: cfg.token, data: tokenCalls.encodeFunctionData("transfer", [to, amount]) }],
           "transfer",
         );
       }
-      if (!local) {
-        await scope([cfg.token]);
-        return confirm(
-          new Contract(cfg.token, erc20, wallet).transfer(to, amount),
-        );
-      }
+      if (!local)
+        return viaQorex(cfg.token, tokenCalls.encodeFunctionData("transfer", [to, amount]), "transfer");
       const body = {
         to,
         from: wallet.address,
