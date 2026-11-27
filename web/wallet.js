@@ -30,7 +30,6 @@ import {
   callEvm,
   prepareKey,
   swapForFees,
-  crossVmGas,
 } from "./native.js";
 const erc20 = [
   "function approve(address,uint256) returns(bool)",
@@ -132,14 +131,14 @@ export function walletTools(cfg, api, progress, slot = "") {
     external = true;
     return wallet.address;
   }
+  // Gas for one EVM call, from receipts on Diana with about 35% headroom:
+  // claim used 441,833 to 446,441, fund 92,093 to 104,393, a transfer 51,577
+  // and a refund 45,194. Diana's estimate for a claim, which runs pqcVerify, is
+  // about four times too high, and the account pays for the whole limit up front.
+  const EVM_GAS = { claim: 600000n, fund: 150000n, transfer: 80000n, refund: 80000n };
   async function viaQorex(to, data, kind) {
     const from = wallet.address;
-    let gas;
-    try {
-      gas = ((await provider.estimateGas({ from, to, data })) * 13n) / 10n;
-    } catch {
-      gas = crossVmGas[kind];
-    }
+    const gas = EVM_GAS[kind];
     progress("Approve in QoreX. It opens a one-transaction window for this contract…");
     let hash;
     try {
