@@ -1,7 +1,14 @@
 const assert = require("node:assert/strict");
 const hre = require("hardhat");
 const E = require("ethers");
-describe("Clainova escrow", function () {
+// Every rule here also holds for v3, which adds an ML-DSA-87 guardian (see
+// escrow-v3.cjs). Each suite runs once per contract; v3 gets a placeholder
+// guardian key, because these tests never use it.
+const GUARDIAN = "0x" + "5a".repeat(2592);
+const withGuardian = (name, args) => (name === "ClainovaClaimsV3" && args.length === 2 ? [...args, GUARDIAN] : args);
+// ESCROW_ONLY limits a run to one contract (scripts/mutation-check.mjs uses it).
+for (const NAME of ["ClainovaClaims", "ClainovaClaimsV3"].filter((n) => !process.env.ESCROW_ONLY || n === process.env.ESCROW_ONLY))
+describe("Clainova escrow" + (NAME === "ClainovaClaimsV3" ? " (v3)" : ""), function () {
   this.timeout(60000);
   let artifacts,
     rpc,
@@ -25,14 +32,13 @@ describe("Clainova escrow", function () {
       a.abi,
       a.evm.bytecode.object,
       sender,
-    ).deploy(...args);
+    ).deploy(...withGuardian(name, args));
     await c.waitForDeployment();
     return c;
   }
   before(async () => {
-    const { compile } = await import("../../scripts/compile.mjs");
-    artifacts = compile([
-      "contracts/ClainovaClaims.sol",
+    artifacts = await require("./harness.cjs").compiled([
+      "contracts/ClainovaClaims.sol", "contracts/ClainovaClaimsV3.sol",
       "tests/contract/Fixtures.sol",
     ]);
     signer = (await import("../../server/network.mjs")).authority(
@@ -40,7 +46,7 @@ describe("Clainova escrow", function () {
     );
   });
   beforeEach(async () => {
-    await hre.network.provider.send("hardhat_reset");
+    await require("./harness.cjs").freshChain();
     rpc = new E.BrowserProvider(hre.network.provider, undefined, {
       cacheTimeout: -1,
     });
@@ -58,7 +64,7 @@ describe("Clainova escrow", function () {
     check = await inject("VerificationFixture", 2561);
     registry = await inject("RegistryFixture", 2562);
     token = await deploy("TokenFixture");
-    contract = await deploy("ClainovaClaims", [token.target, signer.publicKey]);
+    contract = await deploy(NAME, [token.target, signer.publicKey]);
     await (await token.mint(sender.address, 100000000)).wait();
     await (await token.approve(contract.target, 100000000)).wait();
     deadline = (await rpc.getBlock("latest")).timestamp + 600;
@@ -132,23 +138,23 @@ describe("Clainova escrow", function () {
   });
   it("rejects a verifier key of zeros at deployment", async () => {
     await assert.rejects(
-      deploy("ClainovaClaims", [token.target, new Uint8Array(2592)]),
+      deploy(NAME, [token.target, new Uint8Array(2592)]),
     );
   });
   it("accepts tokens that return no data and rejects tokens that return false", async () => {
     const silent = await deploy("SilentTokenFixture");
-    const escrow = await deploy("ClainovaClaims", [silent.target, signer.publicKey]);
+    const escrow = await deploy(NAME, [silent.target, signer.publicKey]);
     await (await silent.mint(sender.address, 5)).wait();
     await (await silent.approve(escrow.target, 5)).wait();
     await (await escrow.fund(E.toBeHex(7, 32), 5, deadline)).wait();
     assert.equal(await silent.balanceOf(escrow.target), 5n);
     const liar = await deploy("FalseTokenFixture");
-    const broken = await deploy("ClainovaClaims", [liar.target, signer.publicKey]);
+    const broken = await deploy(NAME, [liar.target, signer.publicKey]);
     await assert.rejects(broken.fund(E.toBeHex(8, 32), 5, deadline), /Deposit failed/);
   });
   it("blocks a token that re-enters during payout", async () => {
     const evil = await deploy("ReentrantTokenFixture");
-    const escrow = await deploy("ClainovaClaims", [evil.target, signer.publicKey]);
+    const escrow = await deploy(NAME, [evil.target, signer.publicKey]);
     await (await evil.mint(sender.address, 50)).wait();
     await (await evil.approve(escrow.target, 50)).wait();
     const salt = E.toBeHex(9, 32);
@@ -172,12 +178,16 @@ describe("Clainova escrow", function () {
     assert.equal(await evil.balanceOf(recipient.address), 50n);
   });
   it("has no way to change the verifier key, upgrade or delegate", async () => {
-    const { abi, evm } = artifacts.ClainovaClaims;
+    const { abi, evm } = artifacts[NAME];
     const writes = abi
       .filter((x) => x.type === "function" && !["view", "pure"].includes(x.stateMutability))
       .map((x) => x.name)
       .sort();
-    assert.deepEqual(writes, ["claim", "fund", "refund"]);
+    // v3 adds only its guardian's two calls, which never touch the token.
+    assert.deepEqual(
+      writes,
+      NAME === "ClainovaClaimsV3" ? ["claim", "freeze", "fund", "refund", "rotateVerifier"] : ["claim", "fund", "refund"],
+    );
     // Walks real opcodes, skipping pushed data and the metadata trailer.
     const code = E.getBytes("0x" + evm.deployedBytecode.object);
     const end = code.length - 2 - (code.at(-2) * 256 + code.at(-1));
