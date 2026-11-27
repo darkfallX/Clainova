@@ -5,6 +5,7 @@ import {
   decodeBase64,
   BrowserProvider,
   JsonRpcProvider,
+  VoidSigner,
   getAddress,
   getBytes,
   parseUnits,
@@ -26,6 +27,7 @@ import {
 } from "@qorechain/qorex-types";
 import {
   qorAddress,
+  evmAddress,
   openWindow,
   convertFusd,
   callEvm,
@@ -112,6 +114,18 @@ export function walletTools(cfg, api, progress, slot = "") {
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
   async function connect() {
+    // A QoreX that signs and broadcasts native transactions holds the account:
+    // its qor1 address, whose EVM address is the same 20 bytes, is the wallet.
+    // QoreX derives that account with coin type 118 and its EVM-lane account
+    // with coin type 60, so the two differ and the EVM-lane one is not used.
+    const native = getQorexNative();
+    if (hasCapability(native, "signAndBroadcast")) {
+      await native.enable(QORECHAIN_TESTNET_CHAIN_ID);
+      const key = await native.getKey(QORECHAIN_TESTNET_CHAIN_ID);
+      wallet = new VoidSigner(evmAddress(key.bech32Address), provider);
+      external = true;
+      return wallet.address;
+    }
     const q = window.qorex?.evm;
     if (!q) throw Error("Open QoreX on Diana or create a Clainova wallet.");
     if (BigInt(await q.request({ method: "eth_chainId" })) !== 9800n)
