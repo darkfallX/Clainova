@@ -1,0 +1,35 @@
+{
+  "network": "qorechain-diana",
+  "date": "2026-11-27T16:10:39.000Z",
+  "what": "A Clainova payment collected with the QoreX browser extension 0.4.5 (Chrome), from an Ethereum-style (coin 60) QoreX account. QoreX decoded the claim call, opened a one-transaction EVM window limited to the escrow with the account post-quantum signature, then signed and sent the call.",
+  "escrow": "0xEEc16Da3AD0C4187EBdeF81d91e3b6706159aDd1",
+  "paymentId": "0xa99271a59b74ba7657fb48dd7a91103e7f41607e66c626a42558828c79e5f04b",
+  "funding": {
+    "nativeHash": "295B130E11FB3E82F4D6B5C980654A213C8C171A105628B33B88661B0BFAFBF4",
+    "crossVm": true,
+    "note": "funded by the demo sender through cross-VM, no window"
+  },
+  "wallet": {
+    "evm": "0x376f4A955a723a682Fc872f8a14156D6046354ce",
+    "native": "qor1xah54926wgaxst7gwtu2zs2k6czxx4xwlgtkyk"
+  },
+  "claim": {
+    "hash": "0xd31dac0cf3e1f9973795fbb124418878a455d55f45eb284d79ebf375bbfd1ac3",
+    "block": 10858349,
+    "status": 1,
+    "gasLimit": 600000,
+    "gasUsed": 449528,
+    "feeTestQor": "0.0505719",
+    "nativeHash": "0220E9D4CA4166D40B2BA1C2886AE77DCCC6431EB5CA606EE9A9BB2A7430CA10"
+  },
+  "window": {
+    "openedHeight": 10858347,
+    "expiryHeight": 10858447,
+    "maxTxs": 1,
+    "usedTxs": 1,
+    "allowedTargets": [
+      "0xeec16da3ad0c4187ebdef81d91e3b6706159add1"
+    ]
+  },
+  "escrowStateAfter": "Collected, recipient = wallet.evm, 1 test fUSD"
+}
