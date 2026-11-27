@@ -50,12 +50,18 @@ for (const [file, mutants] of files) {
         out = execSync(npx + " hardhat test --no-compile", {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
+          // Many failing tests print long traces; the default 1 MB buffer would cut
+          // off the summary line and make a caught mutant look missed.
+          maxBuffer: 256 * 1024 * 1024,
           env: { ...process.env, ESCROW_ONLY: file.split("/").pop().replace(".sol", "") },
         });
       } catch (e) {
         out = (e.stdout || "") + (e.stderr || "");
       }
-      const failing = Number((out.match(/(d+) failing/) || [0, 0])[1]);
+      const failing = Number((out.match(/(\d+) failing/) || [0, 0])[1]);
+      // No summary at all means the run broke, which proves nothing either way.
+      if (!/\d+ passing/.test(out) && !failing)
+        throw Error("Test run did not finish for: " + name + "\n" + out.slice(-800));
       total++;
       if (failing) caught++;
       console.log((failing ? "caught   " : "MISSED   ") + file.split("/").pop() + ": " + name + (failing ? ` (${failing} failing)` : ""));
