@@ -31,7 +31,9 @@ services:
       - key: ORGANISER_NAME
         value: Clainova test team
       - key: SMS_PROVIDER
-        value: outbox
+        value: traccar
+      - key: TRACCAR_SMS_TOKEN
+        sync: false
       - key: DATA_KEY
         sync: false
       - key: VERIFIER_SEED
